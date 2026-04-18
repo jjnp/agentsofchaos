@@ -2,9 +2,10 @@
 	import { computeLayoutPlacements } from '$lib/agent-graph/layout';
 	import { demoAgentNodePlacements, demoAgentNodes } from '$lib/agent-graph/fixtures';
 	import AgentCanvas from '$lib/components/agent-graph/AgentCanvas.svelte';
+	import AgentNodeViewSidebar from '$lib/components/agent-graph/AgentNodeViewSidebar.svelte';
 	import AgentCanvasSidebar from '$lib/components/agent-graph/AgentCanvasSidebar.svelte';
 	import type { ControlOption } from '$lib/components/primitives/types';
-	import { layoutModes, type LayoutMode } from '$lib/agent-graph/types';
+	import { layoutModes, type AgentNodeId, type LayoutMode } from '$lib/agent-graph/types';
 
 	const nodes = demoAgentNodes;
 	const basePlacements = demoAgentNodePlacements;
@@ -16,6 +17,9 @@
 
 	let activeLayoutMode = $state<LayoutMode>('rings');
 	let showNodeDetailsForAll = $state(true);
+	let selectedNodeId = $state<AgentNodeId | null>(nodes[4]?.id ?? nodes[0]?.id ?? null);
+	let nodeViewPrompt = $state('');
+	const isNodeViewOpen = true;
 	let isSidebarOpen = $state(true);
 
 	const activePlacements = $derived(
@@ -25,6 +29,7 @@
 			mode: activeLayoutMode
 		})
 	);
+	const selectedNode = $derived(nodes.find((node) => node.id === selectedNodeId) ?? null);
 </script>
 
 <svelte:head>
@@ -33,9 +38,14 @@
 </svelte:head>
 
 <div class="canvas-page">
+	<AgentNodeViewSidebar {selectedNode} isOpen={isNodeViewOpen} bind:prompt={nodeViewPrompt} />
+
 	<AgentCanvas
 		bind:activeLayoutMode
-		selectedNodeId={nodes[4]?.id ?? nodes[0]?.id ?? null}
+		{selectedNodeId}
+		onSelectedNodeChange={(nodeId) => {
+			selectedNodeId = nodeId;
+		}}
 		{showNodeDetailsForAll}
 		{nodes}
 		placements={activePlacements}

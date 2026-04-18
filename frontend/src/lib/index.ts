@@ -1,6 +1,7 @@
 export { default as TerminalStream } from './components/TerminalStream.svelte';
 export { default as AgentCanvas } from './components/agent-graph/AgentCanvas.svelte';
 export { default as AgentCanvasSidebar } from './components/agent-graph/AgentCanvasSidebar.svelte';
+export { default as AgentNodeViewSidebar } from './components/agent-graph/AgentNodeViewSidebar.svelte';
 export { default as Node } from './components/agent-graph/Node.svelte';
 export { default as Button } from './components/primitives/Button.svelte';
 export { default as Dropdown } from './components/primitives/Dropdown.svelte';
