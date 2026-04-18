@@ -22,6 +22,43 @@ function sendJson(ws, payload) {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
 }
 
+function sendJsonResponse(res, statusCode, payload) {
+  res.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.end(JSON.stringify(payload));
+}
+
+function sendTextResponse(res, statusCode, text, contentType = 'text/plain; charset=utf-8') {
+  res.writeHead(statusCode, { 'Content-Type': contentType });
+  res.end(text);
+}
+
+async function readJsonBody(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(Buffer.from(chunk));
+  const raw = Buffer.concat(chunks).toString('utf8').trim();
+  if (!raw) return {};
+  return JSON.parse(raw);
+}
+
+function sendApiError(res, statusCode, code, message) {
+  sendJsonResponse(res, statusCode, { error: { code, message } });
+}
+
+function startSse(res) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+  });
+  res.write(': connected\n\n');
+}
+
+function writeSseEvent(res, payload, eventId = null) {
+  if (eventId != null) res.write(`id: ${eventId}\n`);
+  res.write('event: message\n');
+  res.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -178,6 +215,8 @@ class WorkerHandle {
     this.container = null;
     this.ws = null;
     this.sessionId = null;
+    this.lastGitStatus = null;
+    this.lastForkPoint = null;
   }
 
   emit(payload) {
@@ -421,8 +460,9 @@ class WorkerHandle {
     if (result.exitCode !== 0) {
       throw new Error(`git status failed for ${this.label}: ${result.stderr || result.stdout}`);
     }
-    this.emit({ type: 'git_status', status: result.stdout.trim() });
-    return result.stdout.trim();
+    this.lastGitStatus = result.stdout.trim();
+    this.emit({ type: 'git_status', status: this.lastGitStatus });
+    return this.lastGitStatus;
   }
 
   async getGitHead() {
@@ -527,6 +567,7 @@ class WorkerHandle {
       ...extra,
     };
 
+    this.lastForkPoint = forkPoint;
     await this.writeJson('/state/meta/fork-point.json', forkPoint);
     this.emit({
       type: 'fork_point_recorded',
@@ -610,15 +651,47 @@ class WorkerHandle {
 }
 
 class BrowserSession {
-  constructor(ws) {
-    this.ws = ws;
+  constructor() {
     this.id = randomUUID().replace(/-/g, '').slice(0, 12);
     this.workers = [];
     this.snapshotImages = new Set();
+    this.wsClients = new Set();
+    this.sseClients = new Set();
+    this.eventLog = [];
+    this.eventCounter = 0;
+  }
+
+  attachWebSocket(ws) {
+    this.wsClients.add(ws);
+  }
+
+  detachWebSocket(ws) {
+    this.wsClients.delete(ws);
+  }
+
+  attachSse(res) {
+    this.sseClients.add(res);
+  }
+
+  detachSse(res) {
+    this.sseClients.delete(res);
   }
 
   emit(payload) {
-    sendJson(this.ws, payload);
+    const eventRecord = {
+      id: ++this.eventCounter,
+      timestamp: Date.now(),
+      payload,
+    };
+    this.eventLog.push(eventRecord);
+    if (this.eventLog.length > 2000) this.eventLog.shift();
+
+    for (const ws of this.wsClients) sendJson(ws, payload);
+    for (const res of this.sseClients) {
+      try {
+        writeSseEvent(res, payload, eventRecord.id);
+      } catch {}
+    }
   }
 
   async initialize() {
@@ -633,6 +706,30 @@ class BrowserSession {
     return this.workers[slot];
   }
 
+  serializeWorker(worker) {
+    return {
+      slot: worker.slot,
+      label: worker.label,
+      agentUuid: worker.agentUuid,
+      containerName: worker.containerName || null,
+      sessionId: worker.sessionId || null,
+      sourceImage: worker.sourceImage,
+      status: worker.container ? 'running' : 'stopped',
+      lastGitStatus: worker.lastGitStatus || null,
+      lastForkPoint: worker.lastForkPoint || null,
+    };
+  }
+
+  toJSON() {
+    return {
+      sessionId: this.id,
+      model: PI_MODEL,
+      mergeModel: MERGE_MODEL,
+      instanceCount: this.workers.filter(Boolean).length,
+      instances: this.workers.map((worker) => (worker ? this.serializeWorker(worker) : null)).filter(Boolean),
+    };
+  }
+
   async createInstance(sourceImage = WORKER_IMAGE) {
     const slot = this.workers.length;
     const worker = new WorkerHandle(this, slot, sourceImage);
@@ -645,6 +742,7 @@ class BrowserSession {
 
   prompt(slot, message) {
     this.getWorker(slot).send({ type: 'prompt', message });
+    return { accepted: true, slot, queuedAt: Date.now() };
   }
 
   async stopInstance(slot) {
@@ -654,6 +752,7 @@ class BrowserSession {
     await worker.stop();
     this.workers[slot] = null;
     this.emit({ type: 'instance_stopped', slot, label, agentUuid });
+    return { slot, label, agentUuid };
   }
 
   async fork(sourceSlot) {
@@ -662,7 +761,9 @@ class BrowserSession {
     const forkPoint = await source.captureForkPoint('fork');
     const image = await source.commitSnapshot();
     const target = await this.createInstance(image);
-    this.emit({ type: 'fork_complete', sourceSlot, targetSlot: target.slot, targetLabel: target.label, image, forkPoint });
+    const result = { sourceSlot, targetSlot: target.slot, targetLabel: target.label, image, forkPoint };
+    this.emit({ type: 'fork_complete', ...result });
+    return result;
   }
 
   async prepareMergeBundle(sourceSlot, targetSlot) {
@@ -675,14 +776,15 @@ class BrowserSession {
     const bundle = await source.exportBundle();
     const imported = await target.importBundle(bundle, remoteName);
     await target.inspectGitStatus().catch((error) => target.emit({ type: 'git_status_error', message: error.message }));
-    this.emit({
-      type: 'merge_prep_complete',
+    const result = {
       sourceSlot,
       targetSlot,
       remoteName: imported.remoteName,
       bytes: bundle.length,
       nextStep: `git -C /workspace merge ${remoteName}/main || git -C /workspace log --oneline --all --graph`,
-    });
+    };
+    this.emit({ type: 'merge_prep_complete', ...result });
+    return result;
   }
 
   async merge(sourceSlot, targetSlot) {
@@ -736,15 +838,16 @@ class BrowserSession {
     });
 
     await integration.inspectGitStatus().catch((error) => integration.emit({ type: 'git_status_error', message: error.message }));
-    this.emit({
-      type: 'merge_complete',
+    const result = {
       sourceSlot,
       targetSlot,
       integrationSlot,
       remoteName,
       mergeExitCode: mergeResult.exitCode,
       mergeContextPath: '/state/meta/merge-context.md',
-    });
+    };
+    this.emit({ type: 'merge_complete', ...result });
+    return result;
   }
 
   async dispose() {
@@ -757,72 +860,159 @@ class BrowserSession {
   }
 }
 
+const orchestrator = new BrowserSession();
 const publicDir = path.join(__dirname, 'public');
-const server = http.createServer((req, res) => {
-  const reqPath = req.url === '/' ? '/index.html' : req.url;
-  const filePath = path.join(publicDir, path.normalize(reqPath));
 
-  if (!filePath.startsWith(publicDir)) {
-    res.writeHead(403);
-    res.end('Forbidden');
-    return;
-  }
+async function handleApiRequest(req, res, url) {
+  const method = req.method || 'GET';
+  const parts = url.pathname.split('/').filter(Boolean);
 
-  fs.readFile(filePath, (err, content) => {
-    if (err) {
-      res.writeHead(404);
-      res.end('Not found');
+  try {
+    if (parts[0] !== 'api') {
+      return sendApiError(res, 404, 'NOT_FOUND', 'Unknown API route');
+    }
+
+    if (method === 'GET' && parts[1] === 'state') {
+      return sendJsonResponse(res, 200, orchestrator.toJSON());
+    }
+
+    if (method === 'GET' && parts[1] === 'events' && parts[2] === 'stream') {
+      startSse(res);
+      orchestrator.attachSse(res);
+      for (const event of orchestrator.eventLog) writeSseEvent(res, event.payload, event.id);
+      req.on('close', () => orchestrator.detachSse(res));
       return;
     }
 
-    const ext = path.extname(filePath);
-    const type = ext === '.html'
-      ? 'text/html; charset=utf-8'
-      : ext === '.js'
-        ? 'application/javascript; charset=utf-8'
-        : ext === '.css'
-          ? 'text/css; charset=utf-8'
-          : 'text/plain; charset=utf-8';
+    if (parts[1] === 'instances' && method === 'POST' && parts.length === 2) {
+      const worker = await orchestrator.createInstance();
+      return sendJsonResponse(res, 201, {
+        slot: worker.slot,
+        label: worker.label,
+        agentUuid: worker.agentUuid,
+      });
+    }
 
-    res.writeHead(200, { 'Content-Type': type });
-    res.end(content);
-  });
+    if (parts[1] === 'instances' && method === 'GET' && parts.length === 2) {
+      return sendJsonResponse(res, 200, { instances: orchestrator.toJSON().instances });
+    }
+
+    if (parts[1] === 'instances' && parts.length >= 3) {
+      const slot = Number(parts[2]);
+      if (!Number.isInteger(slot)) return sendApiError(res, 400, 'BAD_REQUEST', 'slot must be an integer');
+
+      if (method === 'GET' && parts.length === 3) {
+        const worker = orchestrator.getWorker(slot);
+        return sendJsonResponse(res, 200, orchestrator.serializeWorker(worker));
+      }
+
+      if (method === 'POST' && parts[3] === 'prompt') {
+        const body = await readJsonBody(req);
+        if (!body.message || typeof body.message !== 'string') {
+          return sendApiError(res, 400, 'BAD_REQUEST', 'message is required');
+        }
+        return sendJsonResponse(res, 202, orchestrator.prompt(slot, body.message));
+      }
+
+      if (method === 'POST' && parts[3] === 'fork') {
+        return sendJsonResponse(res, 200, await orchestrator.fork(slot));
+      }
+
+      if (method === 'POST' && parts[3] === 'stop') {
+        return sendJsonResponse(res, 200, { ok: true, ...(await orchestrator.stopInstance(slot)) });
+      }
+    }
+
+    if (method === 'POST' && parts[1] === 'merge-prep') {
+      const body = await readJsonBody(req);
+      return sendJsonResponse(res, 200, await orchestrator.prepareMergeBundle(body.sourceSlot, body.targetSlot));
+    }
+
+    if (method === 'POST' && parts[1] === 'merge') {
+      const body = await readJsonBody(req);
+      return sendJsonResponse(res, 200, await orchestrator.merge(body.sourceSlot, body.targetSlot));
+    }
+
+    return sendApiError(res, 404, 'NOT_FOUND', 'Unknown API route');
+  } catch (error) {
+    const statusCode = /Invalid slot/.test(error.message) ? 404 : 500;
+    const code = /Invalid slot/.test(error.message) ? 'INVALID_SLOT' : 'INTERNAL_ERROR';
+    return sendApiError(res, statusCode, code, error.message);
+  }
+}
+
+const server = http.createServer(async (req, res) => {
+  try {
+    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+
+    if (url.pathname.startsWith('/api/')) {
+      return await handleApiRequest(req, res, url);
+    }
+
+    const reqPath = url.pathname === '/' ? '/index.html' : url.pathname;
+    const filePath = path.join(publicDir, path.normalize(reqPath));
+
+    if (!filePath.startsWith(publicDir)) {
+      return sendTextResponse(res, 403, 'Forbidden');
+    }
+
+    fs.readFile(filePath, (err, content) => {
+      if (err) {
+        sendTextResponse(res, 404, 'Not found');
+        return;
+      }
+
+      const ext = path.extname(filePath);
+      const type = ext === '.html'
+        ? 'text/html; charset=utf-8'
+        : ext === '.js'
+          ? 'application/javascript; charset=utf-8'
+          : ext === '.css'
+            ? 'text/css; charset=utf-8'
+            : 'text/plain; charset=utf-8';
+
+      sendTextResponse(res, 200, content, type);
+    });
+  } catch (error) {
+    sendApiError(res, 500, 'INTERNAL_ERROR', error.message);
+  }
 });
 
 const wss = new WebSocketServer({ server });
 
-wss.on('connection', async (ws) => {
-  const session = new BrowserSession(ws);
-
-  try {
-    await session.initialize();
-  } catch (error) {
-    sendJson(ws, { type: 'bridge_error', message: error.message });
-    await session.dispose();
-    ws.close();
-    return;
-  }
+wss.on('connection', (ws) => {
+  orchestrator.attachWebSocket(ws);
+  sendJson(ws, { type: 'grid_boot', session: orchestrator.id, gridSize: 0, model: PI_MODEL, mergeModel: MERGE_MODEL });
+  sendJson(ws, { type: 'grid_ready', session: orchestrator.id, gridSize: 0, model: PI_MODEL });
 
   ws.on('message', async (buffer) => {
     try {
       const message = JSON.parse(buffer.toString('utf8'));
-      if (message.type === 'create_instance') return await session.createInstance();
-      if (message.type === 'prompt') return session.prompt(message.target, message.message);
-      if (message.type === 'stop_instance') return await session.stopInstance(message.target);
-      if (message.type === 'fork') return await session.fork(message.source);
-      if (message.type === 'prepare_merge') return await session.prepareMergeBundle(message.source, message.target);
-      if (message.type === 'merge') return await session.merge(message.source, message.target);
+      if (message.type === 'create_instance') return await orchestrator.createInstance();
+      if (message.type === 'prompt') return orchestrator.prompt(message.target, message.message);
+      if (message.type === 'stop_instance') return await orchestrator.stopInstance(message.target);
+      if (message.type === 'fork') return await orchestrator.fork(message.source);
+      if (message.type === 'prepare_merge') return await orchestrator.prepareMergeBundle(message.source, message.target);
+      if (message.type === 'merge') return await orchestrator.merge(message.source, message.target);
       sendJson(ws, { type: 'bridge_error', message: 'Unsupported client message' });
     } catch (error) {
       sendJson(ws, { type: 'bridge_error', message: error.message });
     }
   });
 
-  ws.on('close', async () => {
-    await session.dispose();
+  ws.on('close', () => {
+    orchestrator.detachWebSocket(ws);
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`orchestrator listening on http://0.0.0.0:${PORT}`);
+async function main() {
+  await orchestrator.initialize();
+  server.listen(PORT, () => {
+    console.log(`orchestrator listening on http://0.0.0.0:${PORT}`);
+  });
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
 });
