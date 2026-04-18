@@ -113,16 +113,13 @@ cd apps/orchestrator
 npm run e2e
 ```
 
-## Features in the orchestrated demo
+## What the demo shows
 
-- 2×2 grid of running pi instances
-- prompt each instance separately
-- broadcast prompt to all instances
-- abort per instance or all at once
-- terminal-style output per instance
-- fork one instance into another slot via Docker snapshot image
-- prepare merge input from one instance into another via `git bundle create` + import/fetch inside the target container
-- execute a full merge flow: checkpoint dirty trees, export bundle from source, fetch+merge in target, then write AI-generated merged context to `/state/meta/merge-context.md`
+- one root agent
+- branch/fork into parallel agent nodes
+- prompt nodes independently
+- merge branches into a new integration node
+- inspect the graph and live agent output in the UI
 
 ## Environment
 
