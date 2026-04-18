@@ -60,53 +60,6 @@
 	}
 
 	.canvas-page {
-		@apply mx-auto grid min-h-screen max-w-[1600px] gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_20rem];
-	}
-
-	.canvas-page__stage,
-	.canvas-page__inspector {
-		@apply border border-border/80 bg-surface/88 backdrop-blur;
-	}
-
-	.canvas-page__stage {
-		@apply min-h-[78vh] overflow-hidden rounded-[1.8rem] p-3;
-	}
-
-	.canvas-page__inspector {
-		@apply flex flex-col gap-6 rounded-[1.8rem] p-6;
-	}
-
-	.canvas-page__section {
-		@apply grid gap-4;
-	}
-
-	.canvas-page__eyebrow {
-		@apply text-xs tracking-[0.28em] text-text-muted uppercase;
-	}
-
-	.canvas-page__title {
-		@apply text-2xl font-semibold text-text;
-	}
-
-	.canvas-page__details {
-		@apply grid gap-4;
-	}
-
-	.canvas-page__details div {
-		@apply grid gap-1 border-b border-dashed border-border/80 pb-4 last:border-b-0;
-	}
-
-	.canvas-page__details dt {
-		@apply text-xs tracking-[0.22em] text-text-muted uppercase;
-	}
-
-	.canvas-page__details dd {
-		@apply text-sm leading-6 break-all text-text;
-	}
-
-	@media (max-width: 1023px) {
-		.canvas-page {
-			@apply grid-cols-1;
-		}
+		@apply relative min-h-screen overflow-hidden;
 	}
 }

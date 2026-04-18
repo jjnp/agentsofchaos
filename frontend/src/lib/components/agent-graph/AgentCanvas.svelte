@@ -237,13 +237,13 @@
 
 	.agent-canvas__rings circle {
 		fill: none;
-		stroke: rgb(255 255 255 / 0.07);
+		stroke: color-mix(in srgb, var(--color-primary) 16%, rgb(255 255 255 / 0.12));
 		stroke-dasharray: 4 8;
 		vector-effect: non-scaling-stroke;
 	}
 
 	.agent-canvas__ring-label {
-		fill: var(--color-text-muted);
+		fill: color-mix(in srgb, var(--color-text) 45%, var(--color-text-muted));
 		font-size: 0.65rem;
 		letter-spacing: 0.18em;
 		text-transform: uppercase;

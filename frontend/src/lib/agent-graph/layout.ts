@@ -17,6 +17,7 @@ export type ConnectionSegment = Readonly<{
 }>;
 
 const RING_RADIUS_STEP = 220;
+const RING_CHILD_SPREAD = 0.78;
 const TREE_X_STEP = 240;
 const TREE_Y_STEP = 180;
 
@@ -185,9 +186,11 @@ const placeRingChildren = ({
 		return;
 	}
 
-	const angleStep = (endAngle - startAngle) / children.length;
+	const totalSpan = (endAngle - startAngle) * RING_CHILD_SPREAD;
+	const centeredStartAngle = startAngle + (endAngle - startAngle - totalSpan) / 2;
+	const angleStep = totalSpan / children.length;
 	for (const [index, child] of children.entries()) {
-		const angle = startAngle + angleStep * index + angleStep / 2;
+		const angle = centeredStartAngle + angleStep * index + angleStep / 2;
 		placements.push(
 			createAgentNodePlacement({
 				nodeId: child.id,
