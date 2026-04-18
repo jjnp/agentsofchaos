@@ -10,8 +10,11 @@ RUN npm install
 COPY apps/pi-worker/server.js ./server.js
 
 WORKDIR /workspace
-COPY . /workspace
-RUN mkdir -p /state/pi-agent /state/meta
+RUN mkdir -p /workspace /state/pi-agent /state/meta \
+ && git init -b main /workspace \
+ && printf '# Agent workspace\n\nThis is a clean worker sandbox.\n' > /workspace/README.md \
+ && git -C /workspace add README.md \
+ && git -C /workspace commit -m "Initial workspace" >/dev/null
 
 WORKDIR /app
 ENV PORT=3000

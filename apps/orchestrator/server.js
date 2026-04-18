@@ -1,5 +1,4 @@
 const http = require('http');
-const fs = require('fs');
 const path = require('path');
 const { randomUUID } = require('crypto');
 const Docker = require('dockerode');
@@ -267,6 +266,50 @@ function buildForkPointFallbackSummary({ label, reason, gitDetails, contextUsage
     ...modifiedFiles,
     '</modified-files>',
   ].join('\n');
+}
+
+function deriveForkPointFallbackTitle({ label, gitDetails, modifiedFiles }) {
+  const subject = (gitDetails?.subject || '').trim();
+  if (subject) return clipText(subject.replace(/[.:]+$/g, ''), 48);
+
+  const firstFile = modifiedFiles.find(Boolean) || gitDetails?.changedFiles?.find(Boolean) || '';
+  if (firstFile) {
+    const stem = path.posix.basename(firstFile).replace(/\.[^.]+$/g, '').replace(/[-_]+/g, ' ').trim();
+    if (stem) return clipText(stem.replace(/\b\w/g, (match) => match.toUpperCase()), 48);
+  }
+
+  return label;
+}
+
+async function summarizeForkPointTitle({ summaryMarkdown, label, reason, gitDetails, modifiedFiles }) {
+  const fallback = deriveForkPointFallbackTitle({ label, gitDetails, modifiedFiles });
+  if (!openai) return fallback;
+
+  const prompt = [
+    'You are naming a coding-agent branch node for a graph UI.',
+    'Return only one short title, 2 to 5 words.',
+    'No quotes.',
+    'No markdown.',
+    'No trailing period.',
+    'Do not say branch, node, summary, or fork unless truly necessary.',
+    'Prefer concrete implementation intent.',
+    '',
+    `Instance label: ${label}`,
+    `Fork reason: ${reason}`,
+    `Commit subject: ${gitDetails?.subject || 'unknown'}`,
+    `Changed files: ${(gitDetails?.changedFiles || []).join(', ') || '(none)'}`,
+    '',
+    'Branch summary:',
+    summaryMarkdown || '(none)',
+  ].join('\n');
+
+  const response = await openai.responses.create({
+    model: MERGE_MODEL,
+    input: prompt,
+  });
+
+  const text = (response.output_text || '').split('\n')[0]?.trim().replace(/^['"]|['"]$/g, '').replace(/[.]+$/g, '');
+  return text ? clipText(text, 48) : fallback;
 }
 
 async function summarizeForkPoint({ label, reason, latestSession, gitDetails, contextUsage, readFiles, modifiedFiles }) {
@@ -691,6 +734,7 @@ class WorkerHandle {
   }
 
   async captureForkPoint(reason, extra = {}) {
+    const checkpointState = await this.checkpointIfDirty(`fork point ${reason} ${this.label}`).catch(() => 'unknown');
     const [gitStatus, gitHead, gitDetails, latestSession] = await Promise.all([
       this.inspectGitStatus().catch(() => null),
       this.getGitHead().catch(() => null),
@@ -716,13 +760,21 @@ class WorkerHandle {
       }
     }
 
+    const uniqueReadFiles = [...new Set(readFiles)];
     const summaryMarkdown = await summarizeForkPoint({
       label: this.label,
       reason,
       latestSession,
       gitDetails,
       contextUsage,
-      readFiles: [...new Set(readFiles)],
+      readFiles: uniqueReadFiles,
+      modifiedFiles,
+    });
+    const summaryNodeTitle = await summarizeForkPointTitle({
+      summaryMarkdown,
+      label: this.label,
+      reason,
+      gitDetails,
       modifiedFiles,
     });
 
@@ -750,12 +802,16 @@ class WorkerHandle {
         assistantMessages: contextUsage.assistantMessages,
         latestStopReason: contextUsage.latestStopReason,
       },
+      checkpoint: {
+        state: checkpointState,
+      },
       contextUsage,
       summary: {
         format: 'pi-branch-summary-v1',
         markdown: summaryMarkdown,
         preview: summaryMarkdown.split('\n').find((line) => line.trim() && !line.startsWith('##')) || null,
-        readFiles: [...new Set(readFiles)],
+        nodeTitle: summaryNodeTitle,
+        readFiles: uniqueReadFiles,
         modifiedFiles,
       },
       ...extra,
@@ -775,6 +831,7 @@ class WorkerHandle {
           shortStat: forkPoint.git.shortStat,
           changedFiles: forkPoint.git.changedFiles,
         },
+        checkpoint: forkPoint.checkpoint,
         contextUsage: {
           totalTokens: forkPoint.contextUsage.totalTokens,
           latestResponseTokens: forkPoint.contextUsage.latestResponseTokens,
@@ -783,6 +840,7 @@ class WorkerHandle {
         summary: {
           format: forkPoint.summary.format,
           preview: forkPoint.summary.preview,
+          nodeTitle: forkPoint.summary.nodeTitle,
           readFiles: forkPoint.summary.readFiles,
           modifiedFiles: forkPoint.summary.modifiedFiles,
         },
@@ -942,6 +1000,13 @@ class BrowserSession {
   }
 
   async createInstance(sourceImage = WORKER_IMAGE) {
+    const isRootCreation = sourceImage === WORKER_IMAGE;
+    if (isRootCreation && this.workers.filter(Boolean).length > 0) {
+      const error = new Error('A root instance already exists; create new nodes via fork or merge instead');
+      error.code = 'ROOT_ALREADY_EXISTS';
+      throw error;
+    }
+
     const slot = this.workers.length;
     const worker = new WorkerHandle(this, slot, sourceImage);
     this.workers.push(worker);
@@ -1153,7 +1218,6 @@ class BrowserSession {
 }
 
 const orchestrator = new BrowserSession();
-const publicDir = path.join(__dirname, 'public');
 
 async function handleApiRequest(req, res, url) {
   const method = req.method || 'GET';
@@ -1263,6 +1327,9 @@ async function handleApiRequest(req, res, url) {
 
     return sendApiError(res, 404, 'NOT_FOUND', 'Unknown API route');
   } catch (error) {
+    if (error.code === 'ROOT_ALREADY_EXISTS') {
+      return sendApiError(res, 400, 'ROOT_ALREADY_EXISTS', error.message);
+    }
     if (error.code === 'FILE_NOT_IN_FORK_POINT') {
       return sendApiError(res, 404, 'FILE_NOT_IN_FORK_POINT', error.message);
     }
@@ -1283,30 +1350,27 @@ const server = http.createServer(async (req, res) => {
       return await handleApiRequest(req, res, url);
     }
 
-    const reqPath = url.pathname === '/' ? '/index.html' : url.pathname;
-    const filePath = path.join(publicDir, path.normalize(reqPath));
-
-    if (!filePath.startsWith(publicDir)) {
-      return sendTextResponse(res, 403, 'Forbidden');
+    if (url.pathname === '/' || url.pathname === '') {
+      return sendTextResponse(
+        res,
+        200,
+        [
+          'Agents of Chaos orchestrator',
+          '',
+          'The legacy static prototype UI has been removed from port 3000.',
+          'Use the REST + SSE API from this service instead.',
+          '',
+          'Key endpoints:',
+          '- GET /api/state',
+          '- GET /api/events/stream',
+          '- POST /api/instances',
+          '- POST /api/merge',
+        ].join('\n'),
+        'text/plain; charset=utf-8',
+      );
     }
 
-    fs.readFile(filePath, (err, content) => {
-      if (err) {
-        sendTextResponse(res, 404, 'Not found');
-        return;
-      }
-
-      const ext = path.extname(filePath);
-      const type = ext === '.html'
-        ? 'text/html; charset=utf-8'
-        : ext === '.js'
-          ? 'application/javascript; charset=utf-8'
-          : ext === '.css'
-            ? 'text/css; charset=utf-8'
-            : 'text/plain; charset=utf-8';
-
-      sendTextResponse(res, 200, content, type);
-    });
+    return sendApiError(res, 404, 'NOT_FOUND', 'Unknown route');
   } catch (error) {
     sendApiError(res, 500, 'INTERNAL_ERROR', error.message);
   }

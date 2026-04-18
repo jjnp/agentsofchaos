@@ -53,11 +53,13 @@ That script:
 1. builds `agentsofchaos/pi-worker:latest`
 2. starts the orchestrator with Docker socket access
 
-Then open:
+The orchestrator now listens on:
 
 ```text
 http://localhost:3000
 ```
+
+Port `3000` is now **API/SSE only**. The legacy static prototype UI has been removed from the orchestrator service.
 
 For an automated smoke test when Docker is available:
 

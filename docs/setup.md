@@ -10,7 +10,7 @@ The current main system is:
 - `apps/pi-worker/` — the worker container image
 - one Docker container per pi instance
 - one global orchestrator state
-- browser UI on port `3000`
+- API/SSE/WebSocket control server on port `3000`
 - REST + SSE + WebSocket control surfaces
 
 ## Prerequisites
@@ -69,11 +69,13 @@ What this does:
 1. builds the worker image from `apps/pi-worker/Dockerfile`
 2. starts the orchestrator with Docker socket access via `docker compose`
 
-When the server is up, open:
+When the server is up, the orchestrator listens on:
 
 ```text
 http://localhost:3000
 ```
+
+Port `3000` is now API-only; the legacy static prototype UI has been removed.
 
 ## Start manually without `dev-up.sh`
 
@@ -90,10 +92,11 @@ docker compose up --build
 
 The orchestrator currently exposes:
 
-- browser UI at `http://localhost:3000`
 - WebSocket API at `ws://localhost:3000`
 - REST API under `/api/*`
 - SSE event stream at `/api/events/stream`
+
+The legacy static browser prototype is no longer served from the orchestrator on port `3000`.
 
 See:
 - `docs/orchestrator-api.md`

@@ -32,6 +32,7 @@ export type MergedConnectionSegment = Readonly<{
 
 const RING_RADIUS_STEP = 220;
 const RING_CHILD_SPREAD = 0.78;
+const MULTI_ROOT_RING_RADIUS = 280;
 const TREE_X_STEP = 240;
 const TREE_Y_STEP = 180;
 const ROOT_NODE_CONNECTION_OFFSET = 30;
@@ -251,17 +252,32 @@ export const computeLayoutPlacements = ({
 	}
 };
 
+function getRootOrigin(index: number, count: number): { x: number; y: number } {
+	if (count <= 1) {
+		return { x: 0, y: 0 };
+	}
+
+	const radius = Math.max(MULTI_ROOT_RING_RADIUS, ((count - 1) * RING_RADIUS_STEP) / 2);
+	const angle = -Math.PI / 2 + (Math.PI * 2 * index) / count;
+	return {
+		x: Math.cos(angle) * radius,
+		y: Math.sin(angle) * radius
+	};
+}
+
 const computeRingLayout = (nodes: readonly AgentNode[]) => {
 	const childrenMap = getChildrenMap(nodes);
 	const placements: AgentNodePlacement[] = [];
 	const roots = childrenMap.get(null) ?? [];
 
-	for (const root of roots) {
-		placements.push(createAgentNodePlacement({ nodeId: root.id, x: 0, y: 0 }));
+	for (const [index, root] of roots.entries()) {
+		const origin = getRootOrigin(index, roots.length);
+		placements.push(createAgentNodePlacement({ nodeId: root.id, x: origin.x, y: origin.y }));
 		placeRingChildren({
 			parentId: root.id,
 			childrenMap,
 			placements,
+			origin,
 			radius: RING_RADIUS_STEP,
 			startAngle: -Math.PI,
 			endAngle: Math.PI
@@ -275,6 +291,7 @@ const placeRingChildren = ({
 	parentId,
 	childrenMap,
 	placements,
+	origin,
 	radius,
 	startAngle,
 	endAngle
@@ -282,6 +299,7 @@ const placeRingChildren = ({
 	parentId: AgentNodeId;
 	childrenMap: Map<AgentNodeId | null, AgentNode[]>;
 	placements: AgentNodePlacement[];
+	origin: Readonly<{ x: number; y: number }>;
 	radius: number;
 	startAngle: number;
 	endAngle: number;
@@ -299,8 +317,8 @@ const placeRingChildren = ({
 		placements.push(
 			createAgentNodePlacement({
 				nodeId: child.id,
-				x: Math.cos(angle) * radius,
-				y: Math.sin(angle) * radius
+				x: origin.x + Math.cos(angle) * radius,
+				y: origin.y + Math.sin(angle) * radius
 			})
 		);
 
@@ -308,6 +326,7 @@ const placeRingChildren = ({
 			parentId: child.id,
 			childrenMap,
 			placements,
+			origin,
 			radius: radius + RING_RADIUS_STEP,
 			startAngle: angle - angleStep / 2,
 			endAngle: angle + angleStep / 2
