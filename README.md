@@ -38,6 +38,9 @@ Worker containers now keep state in fixed in-container paths:
 
 ## Run the orchestrated demo
 
+For a fuller setup guide, see:
+- `docs/setup.md`
+
 From the repo root:
 
 ```bash
