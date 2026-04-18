@@ -1,32 +1,54 @@
+![Agents of Chaos screenshot](./screenshot.png)
+
 # agentsofchaos
 
-A novel graph-based interface for coding agents that makes branching, parallel exploration, and mergeable reasoning paths visible and interactive, so users can steer Pi-like agent workflows more directly.
+**Agents of Chaos** is a graph-based interface for coding agents where agents can **branch, run in parallel, and merge back together like code**.
 
-This repo now contains two demos:
+Instead of treating an agent as one long chat, this project makes agent work visible as a live graph:
+- each node is an isolated agent instance
+- branches preserve filesystem + agent session state
+- merges create integration nodes instead of overwriting existing work
+- users can inspect lineage, prompt individual nodes, and watch output live
 
-- `apps/pi-rpc/` — the earlier single-container, multi-process prototype
-- `apps/orchestrator/` + `apps/pi-worker/` — the new Docker-orchestrated version with **one container per pi instance**
+## Hackathon pitch
 
-## Recommended demo: Docker orchestration + forking
+The core idea is simple:
 
-The current main demo is a **2×2 grid of pi workers**, where:
+> **What if coding agents worked like git branches?**
 
-- each tile is its own **Docker container**
-- each worker runs a single `pi --mode rpc` instance
-- the browser talks to an **orchestrator** service
-- the orchestrator creates/removes worker containers over the Docker API
-- a worker can be **forked** into another slot using Docker `commit`, so the child inherits filesystem + pi session state from the parent snapshot
+Our demo shows exactly that:
+- spin up a root agent
+- fork it into parallel explorations
+- let different branches try different implementations
+- merge them back into a fresh integration node
+- visualize the whole process as a navigable graph
 
-This is the Level 2 model we discussed:
+## Recommended demo
 
-- snapshot/fork **filesystem + pi state**
-- do **not** try to snapshot live process RAM
-- lean on Docker overlay/layer behavior instead of copying bind-mounted workspaces
-- worker images start with a baked-in snapshot of the repo, then diverge in each container's writable layer
+The main demo is the Docker-orchestrated system in:
+- `apps/orchestrator/`
+- `apps/pi-worker/`
+
+There is also an older reference prototype in:
+- `apps/pi-rpc/`
+
+## How it works
+
+- each agent runs in its own **Docker container**
+- the orchestrator manages agent lifecycle and event streaming
+- forks are created from Docker snapshots so the child inherits:
+  - filesystem state
+  - git state
+  - persisted pi session state
+- merges are transported with **`git bundle`**, then applied in a new integration instance
+- the frontend renders the instance graph and live terminal-style output
+
+This keeps the demo grounded in real version-control semantics instead of faking branch behavior in memory.
 
 ## Layout
 
-- `apps/orchestrator/` — browser UI + Docker orchestration service
+- `frontend/` — graph UI for the live demo
+- `apps/orchestrator/` — backend orchestrator, REST/SSE/WebSocket control plane
 - `apps/pi-worker/` — single-worker image that exposes a websocket bridge around `pi --mode rpc`
 - `apps/pi-rpc/` — older all-in-one prototype kept around for reference
 
@@ -41,7 +63,7 @@ Worker containers now keep state in fixed in-container paths:
 For a fuller setup guide, see:
 - `docs/setup.md`
 
-From the repo root:
+Start the backend orchestrator:
 
 ```bash
 cd apps/orchestrator
@@ -53,13 +75,36 @@ That script:
 1. builds `agentsofchaos/pi-worker:latest`
 2. starts the orchestrator with Docker socket access
 
-The orchestrator now listens on:
+The orchestrator listens on:
 
 ```text
 http://localhost:3000
 ```
 
-Port `3000` is now **API/SSE only**. The legacy static prototype UI has been removed from the orchestrator service.
+Port `3000` is **API/SSE only**.
+
+Then start the graph frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The graph UI will be available on Vite's default dev port, usually:
+
+```text
+http://localhost:5173
+```
+
+### Quick judge demo flow
+
+1. create a single root node
+2. send a prompt to the root
+3. fork it into multiple branches
+4. send different prompts to each branch
+5. merge one branch back into an integration node
+6. show that the original target branch stays untouched while the integration node reflects the merge result
 
 For an automated smoke test when Docker is available:
 
