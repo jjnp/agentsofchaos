@@ -1,3 +1,4 @@
+export { default as TerminalStream } from './components/TerminalStream.svelte';
 export { default as Button } from './components/primitives/Button.svelte';
 export { default as Dropdown } from './components/primitives/Dropdown.svelte';
 export { default as Input } from './components/primitives/Input.svelte';
