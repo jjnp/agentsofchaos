@@ -1,32 +1,24 @@
 <script lang="ts">
-	import type { AgentNode } from '$lib/agent-graph/types';
+	import TerminalStream from '$lib/components/TerminalStream.svelte';
+	import type { MaterializedOrchestratorGraphNode } from '$lib/orchestrator/graph';
 
 	let {
 		selectedNode = null,
 		isOpen = true,
 		prompt = $bindable(''),
-		onSubmit
+		onSubmit,
+		onCreateInstance
 	}: {
-		selectedNode?: AgentNode | null;
+		selectedNode?: MaterializedOrchestratorGraphNode | null;
 		isOpen?: boolean;
 		prompt?: string;
 		onSubmit?: () => void;
+		onCreateInstance?: () => void;
 	} = $props();
 
-	const terminalLines = [
-		'[agent] attaching to active node stream…',
-		'[agent] replaying latest execution output…',
-		'',
-		'> Parsing branch context and assembling task state',
-		'> Reviewing parent lineage and merged notes',
-		'> Preparing next message chunk for the selected node',
-		'',
-		'lorem ipsum dolor sit amet, consectetur adipiscing elit.',
-		'consequat id porta vitae, pretium non velit, sed tempor risus.',
-		'mauris placerat erat vel magna fermentum, non ultrices nibh feugiat.'
-	];
-
 	const isSubmitDisabled = $derived(!selectedNode || prompt.trim().length === 0);
+	const terminalOutput = $derived(selectedNode?.record.terminalOutput ?? '');
+	const terminalStatus = $derived(selectedNode?.terminalMode ?? 'idle');
 
 	const handleSubmit = () => {
 		if (isSubmitDisabled) {
@@ -41,18 +33,32 @@
 	<aside class="node-view-sidebar" aria-label="Node view">
 		<header class="node-view-sidebar__header">
 			{#if selectedNode}
-				<h2 class="node-view-sidebar__title">{selectedNode.name}</h2>
-				<p class="node-view-sidebar__status">Status: {selectedNode.status}</p>
+				<div class="node-view-sidebar__header-copy">
+					<h2 class="node-view-sidebar__title">{selectedNode.node.name}</h2>
+					<p class="node-view-sidebar__status">
+						Slot {selectedNode.record.backend.slot + 1} · {selectedNode.record.backend.label} ·
+						<span>{selectedNode.node.status}</span>
+					</p>
+				</div>
 			{:else}
-				<h2 class="node-view-sidebar__title">No node selected</h2>
-				<p class="node-view-sidebar__status">Select a node in the canvas to inspect it here.</p>
+				<div class="node-view-sidebar__header-copy">
+					<h2 class="node-view-sidebar__title">No node selected</h2>
+					<p class="node-view-sidebar__status">
+						Create or select an instance in the graph to inspect its output and continue work.
+					</p>
+				</div>
 			{/if}
 		</header>
 
-		<div class="node-view-sidebar__terminal" role="log" aria-live="polite">
-			{#each terminalLines as line, index (`${index}-${line}`)}
-				<p>{line}</p>
-			{/each}
+		<div class="node-view-sidebar__body">
+			<section class="node-view-sidebar__terminal-shell">
+				<TerminalStream
+					title={selectedNode ? `${selectedNode.record.backend.label} output` : 'Node output'}
+					feedText={terminalOutput}
+					feedStatus={terminalStatus}
+					readOnly={true}
+				/>
+			</section>
 		</div>
 
 		<div class="node-view-sidebar__composer">
@@ -63,6 +69,7 @@
 				bind:value={prompt}
 				rows="4"
 				placeholder="Write the next instruction for this node…"
+				disabled={!selectedNode}
 				onkeydown={(event) => {
 					if (event.key === 'Enter' && !event.shiftKey) {
 						event.preventDefault();
@@ -71,14 +78,26 @@
 				}}
 			></textarea>
 			<div class="node-view-sidebar__composer-actions">
-				<button
-					type="button"
-					class="node-view-sidebar__submit"
-					disabled={isSubmitDisabled}
-					onclick={handleSubmit}
-				>
-					Send
-				</button>
+				{#if !selectedNode}
+					<button
+						type="button"
+						class="node-view-sidebar__secondary"
+						onclick={() => {
+							onCreateInstance?.();
+						}}
+					>
+						Create instance
+					</button>
+				{:else}
+					<button
+						type="button"
+						class="node-view-sidebar__submit"
+						disabled={isSubmitDisabled}
+						onclick={handleSubmit}
+					>
+						Send
+					</button>
+				{/if}
 			</div>
 		</div>
 	</aside>
@@ -103,7 +122,7 @@
 		box-shadow: var(--shadow-panel);
 	}
 
-	.node-view-sidebar__header {
+	.node-view-sidebar__header-copy {
 		display: grid;
 		gap: 0.25rem;
 	}
@@ -117,25 +136,23 @@
 	.node-view-sidebar__status {
 		font-size: 0.76rem;
 		color: color-mix(in srgb, var(--color-primary) 42%, var(--color-text));
+		text-transform: none;
+	}
+
+	.node-view-sidebar__status span {
 		text-transform: capitalize;
 	}
 
-	.node-view-sidebar__terminal {
+	.node-view-sidebar__body {
 		overflow: auto;
-		border-radius: 1.1rem;
-		border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
-		background: linear-gradient(180deg, rgb(10 10 9 / 0.98), rgb(14 15 12 / 0.94));
-		padding: 1rem;
-		font-family:
-			'Berkeley Mono', 'JetBrains Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
-		font-size: 0.78rem;
-		line-height: 1.55;
-		color: #cfd7bc;
-		white-space: pre-wrap;
+		display: grid;
+		gap: 1rem;
+		align-content: start;
+		padding-right: 0.15rem;
 	}
 
-	.node-view-sidebar__terminal p {
-		margin: 0;
+	.node-view-sidebar__terminal-shell {
+		min-height: 28rem;
 	}
 
 	.node-view-sidebar__composer {
@@ -167,6 +184,11 @@
 		outline-offset: 0;
 	}
 
+	.node-view-sidebar__textarea:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
 	.node-view-sidebar__textarea::placeholder {
 		color: var(--color-text-muted);
 	}
@@ -174,18 +196,17 @@
 	.node-view-sidebar__composer-actions {
 		display: flex;
 		justify-content: flex-end;
+		gap: 0.65rem;
 	}
 
-	.node-view-sidebar__submit {
-		border: 1px solid color-mix(in srgb, var(--color-primary) 48%, var(--color-border));
+	.node-view-sidebar__submit,
+	.node-view-sidebar__secondary {
 		border-radius: 999px;
-		background: color-mix(in srgb, var(--color-primary) 24%, rgb(18 19 15 / 1));
 		padding: 0.65rem 1rem;
 		font-size: 0.74rem;
 		font-weight: 600;
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
-		color: var(--color-text);
 		cursor: pointer;
 		transition:
 			transform 180ms ease,
@@ -193,12 +214,26 @@
 			opacity 180ms ease;
 	}
 
-	.node-view-sidebar__submit:hover:not(:disabled) {
+	.node-view-sidebar__submit {
+		border: 1px solid color-mix(in srgb, var(--color-primary) 48%, var(--color-border));
+		background: color-mix(in srgb, var(--color-primary) 24%, rgb(18 19 15 / 1));
+		color: var(--color-text);
+	}
+
+	.node-view-sidebar__secondary {
+		border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+		background: color-mix(in srgb, var(--color-surface-elevated) 90%, black);
+		color: var(--color-text);
+	}
+
+	.node-view-sidebar__submit:hover:not(:disabled),
+	.node-view-sidebar__secondary:hover:not(:disabled) {
 		transform: translateY(-1px);
 		filter: brightness(1.06);
 	}
 
-	.node-view-sidebar__submit:disabled {
+	.node-view-sidebar__submit:disabled,
+	.node-view-sidebar__secondary:disabled {
 		opacity: 0.45;
 		cursor: not-allowed;
 	}

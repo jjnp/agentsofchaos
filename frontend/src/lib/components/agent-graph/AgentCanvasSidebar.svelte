@@ -13,7 +13,8 @@
 		orchestratorState = null,
 		orchestratorLoadStatus = 'idle',
 		orchestratorStreamStatus = 'closed',
-		orchestratorError = null
+		orchestratorError = null,
+		onCreateInstance
 	}: {
 		activeLayoutMode?: LayoutMode;
 		showNodeDetailsForAll?: boolean;
@@ -23,6 +24,7 @@
 		orchestratorLoadStatus?: 'idle' | 'loading' | 'ready' | 'error';
 		orchestratorStreamStatus?: OrchestratorEventStreamStatus;
 		orchestratorError?: string | null;
+		onCreateInstance?: () => void;
 	} = $props();
 
 	const handleLayoutModeSelect = (option: ControlOption) => {
@@ -101,34 +103,29 @@
 			<div class="canvas-sidebar__backend-heading-row">
 				<div>
 					<span class="canvas-sidebar__switch-label">Orchestrator</span>
-					<p class="canvas-sidebar__switch-copy">
-						Bootstrap and stream status for backend integration.
-					</p>
+					<p class="canvas-sidebar__switch-copy">Minimal backend connection status.</p>
 				</div>
 				<span class={`canvas-sidebar__backend-status ${orchestratorStatusTone}`}>
 					{orchestratorStreamStatus}
 				</span>
 			</div>
 
+			<button
+				type="button"
+				class="canvas-sidebar__create"
+				onclick={() => {
+					onCreateInstance?.();
+				}}
+			>
+				Create instance
+			</button>
+
 			{#if orchestratorState}
-				<dl class="canvas-sidebar__backend-grid">
-					<div>
-						<dt>Session</dt>
-						<dd>{orchestratorState.sessionId}</dd>
-					</div>
-					<div>
-						<dt>Instances</dt>
-						<dd>{orchestratorState.instanceCount}</dd>
-					</div>
-					<div>
-						<dt>Model</dt>
-						<dd>{orchestratorState.model}</dd>
-					</div>
-					<div>
-						<dt>Merge model</dt>
-						<dd>{orchestratorState.mergeModel}</dd>
-					</div>
-				</dl>
+				<p class="canvas-sidebar__backend-copy">
+					{orchestratorState.instanceCount} live instance{orchestratorState.instanceCount === 1
+						? ''
+						: 's'}
+				</p>
 			{:else}
 				<p class="canvas-sidebar__backend-copy">
 					{orchestratorLoadStatus === 'loading'
@@ -323,26 +320,26 @@
 		color: var(--color-text-muted);
 	}
 
-	.canvas-sidebar__backend-grid {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 0.7rem 0.9rem;
-		margin: 0;
-	}
-
-	.canvas-sidebar__backend-grid dt {
-		font-size: 0.62rem;
+	.canvas-sidebar__create {
+		justify-self: start;
+		border: 1px solid color-mix(in srgb, var(--color-primary) 48%, var(--color-border));
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--color-primary) 20%, rgb(18 19 15 / 1));
+		padding: 0.6rem 0.9rem;
+		font-size: 0.7rem;
+		font-weight: 600;
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
-		color: var(--color-text-muted);
+		color: var(--color-text);
+		cursor: pointer;
+		transition:
+			transform 180ms ease,
+			filter 180ms ease;
 	}
 
-	.canvas-sidebar__backend-grid dd {
-		margin: 0.2rem 0 0;
-		font-size: 0.75rem;
-		line-height: 1.4;
-		color: var(--color-text);
-		word-break: break-word;
+	.canvas-sidebar__create:hover {
+		transform: translateY(-1px);
+		filter: brightness(1.05);
 	}
 
 	@media (max-width: 640px) {

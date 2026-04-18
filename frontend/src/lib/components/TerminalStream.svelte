@@ -4,6 +4,7 @@
 	import type { FitAddon as XtermFitAddon } from '@xterm/addon-fit';
 	import type { ITerminalOptions, Terminal as XtermTerminal } from '@xterm/xterm';
 	import '@xterm/xterm/css/xterm.css';
+	import { getTerminalFeedUpdate } from './terminal-feed';
 
 	type SocketState = 'idle' | 'connecting' | 'open' | 'closed' | 'error';
 	type SocketMessage =
@@ -15,12 +16,15 @@
 		data: MessageEvent['data']
 	) => string | Uint8Array | null | Promise<string | Uint8Array | null>;
 	interface Props {
-		wsUrl: string;
+		wsUrl?: string;
 		protocols?: string | string[];
 		connectOnMount?: boolean;
 		reconnect?: boolean;
 		reconnectDelay?: number;
 		title?: string;
+		feedText?: string;
+		feedStatus?: 'idle' | 'live' | 'replay';
+		readOnly?: boolean;
 		termOptions?: ITerminalOptions;
 		encodeOutgoing?: EncodeOutgoing;
 		decodeIncoming?: DecodeIncoming;
@@ -73,12 +77,15 @@
 	};
 
 	let {
-		wsUrl,
+		wsUrl = '',
 		protocols,
 		connectOnMount = true,
 		reconnect = true,
 		reconnectDelay = 1_500,
 		title = 'Terminal stream',
+		feedText,
+		feedStatus = 'replay',
+		readOnly = false,
 		termOptions = {},
 		encodeOutgoing = defaultEncodeOutgoing,
 		decodeIncoming = defaultDecodeIncoming,
@@ -98,6 +105,10 @@
 	let fitFrame = 0;
 	let defaultFontSize = $state(14);
 	let currentFontSize = $state(14);
+	let lastRenderedFeedText = $state('');
+
+	const isFeedMode = $derived(feedText !== undefined);
+	const displayedStatus = $derived(isFeedMode ? feedStatus : socketState);
 
 	const statusClasses: Record<SocketState, string> = {
 		idle: 'border-white/10 bg-white/5 text-slate-300',
@@ -106,6 +117,12 @@
 		closed: 'border-amber-400/30 bg-amber-400/10 text-amber-200',
 		error: 'border-rose-400/30 bg-rose-400/10 text-rose-200'
 	};
+
+	const feedStatusClasses = {
+		idle: 'border-white/10 bg-white/5 text-slate-300',
+		live: 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200',
+		replay: 'border-sky-400/30 bg-sky-400/10 text-sky-200'
+	} as const;
 
 	const shortcutHints = [
 		'⌘C / Ctrl+Shift+C copy',
@@ -212,7 +229,6 @@
 			cursorBlink: true,
 			cursorInactiveStyle: 'outline',
 			cursorStyle: 'block',
-			disableStdin: false,
 			drawBoldTextInBrightColors: true,
 			fontFamily:
 				'"Berkeley Mono", "JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, monospace',
@@ -230,7 +246,8 @@
 				...ghosttyTheme,
 				...termOptions.theme
 			},
-			...termOptions
+			...termOptions,
+			disableStdin: isFeedMode || readOnly || termOptions.disableStdin
 		};
 	}
 
@@ -250,6 +267,7 @@
 	}
 
 	function sendMessage(message: SocketMessage) {
+		if (isFeedMode || readOnly) return;
 		sendRaw(encodeOutgoing(message));
 	}
 
@@ -270,7 +288,12 @@
 	}
 
 	function clearTerminal() {
-		terminal?.clear();
+		if (isFeedMode && terminal) {
+			terminal.reset();
+			lastRenderedFeedText = '';
+		} else {
+			terminal?.clear();
+		}
 		focusTerminal();
 	}
 
@@ -423,12 +446,14 @@
 				instance.loadAddon(webLinksAddon);
 				installKeyboardShortcuts(instance);
 				instance.open(terminalHost);
-				instance.onData((data) => {
-					sendMessage({ type: 'input', data });
-				});
-				instance.onResize(({ cols, rows }) => {
-					sendMessage({ type: 'resize', cols, rows });
-				});
+				if (!isFeedMode && !readOnly) {
+					instance.onData((data) => {
+						sendMessage({ type: 'input', data });
+					});
+					instance.onResize(({ cols, rows }) => {
+						sendMessage({ type: 'resize', cols, rows });
+					});
+				}
 
 				terminal = instance;
 				fitAddon = nextFitAddon;
@@ -462,7 +487,32 @@
 	});
 
 	$effect(() => {
+		if (!mounted || !terminal || !isFeedMode) return;
+
+		const update = getTerminalFeedUpdate(lastRenderedFeedText, feedText);
+		if (update.mode === 'none') {
+			return;
+		}
+
+		if (update.mode === 'replace') {
+			terminal.reset();
+			if (update.text.length > 0) {
+				terminal.write(update.text);
+			}
+		} else if (update.mode === 'append' && update.text.length > 0) {
+			terminal.write(update.text);
+		}
+
+		lastRenderedFeedText = feedText ?? '';
+		terminal.scrollToBottom();
+	});
+
+	$effect(() => {
 		if (!mounted) return;
+		if (isFeedMode) {
+			disconnect(true);
+			return;
+		}
 
 		if (!connectOnMount) {
 			disconnect(true);
@@ -484,13 +534,15 @@
 			<div class="flex flex-wrap items-center gap-3">
 				<h2 class="text-sm font-semibold tracking-wide text-slate-100">{title}</h2>
 				<span
-					class={`inline-flex items-center rounded-full border px-2 py-1 text-[11px] font-medium tracking-[0.18em] uppercase ${statusClasses[socketState]}`}
+					class={`inline-flex items-center rounded-full border px-2 py-1 text-[11px] font-medium tracking-[0.18em] uppercase ${isFeedMode ? feedStatusClasses[feedStatus] : statusClasses[socketState]}`}
 				>
-					{socketState}
+					{displayedStatus}
 				</span>
 			</div>
 			<p class="mt-1 truncate text-xs text-slate-400">
-				{lastConnectedUrl || wsUrl || 'No websocket configured'}
+				{isFeedMode
+					? 'Orchestrator event feed'
+					: lastConnectedUrl || wsUrl || 'No websocket configured'}
 			</p>
 		</div>
 
@@ -509,7 +561,7 @@
 			>
 				Clear
 			</button>
-			{#if socketState === 'open' || socketState === 'connecting'}
+			{#if !isFeedMode && (socketState === 'open' || socketState === 'connecting')}
 				<button
 					type="button"
 					class="rounded-full border border-rose-400/30 bg-rose-400/10 px-3 py-1.5 text-rose-100 transition hover:bg-rose-400/20"
@@ -517,7 +569,7 @@
 				>
 					Disconnect
 				</button>
-			{:else}
+			{:else if !isFeedMode}
 				<button
 					type="button"
 					class="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1.5 text-emerald-100 transition hover:bg-emerald-400/20"
