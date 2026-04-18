@@ -19,27 +19,29 @@
 	let { node }: Props = $props();
 </script>
 
-<section class="flex flex-col gap-4">
-	<div class="panel p-6">
+<section class="flex flex-col gap-3">
+	<div class="panel p-4">
 		<div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-			<div>
-				<p class="text-sm font-medium tracking-[0.18em] text-primary-accent uppercase">
+			<div class="min-w-0">
+				<p class="text-[10px] font-medium tracking-[0.22em] text-primary-accent uppercase">
 					Selected node
 				</p>
-				<h2 class="mt-2 text-2xl font-semibold text-text">{node.title}</h2>
-				<p class="mt-3 max-w-4xl text-sm leading-7 text-text-muted">{node.prompt}</p>
+				<h2 class="mt-1 text-lg font-semibold text-text sm:text-xl">{node.title}</h2>
+				<p class="mt-2 max-w-3xl text-xs leading-5 text-text-muted sm:text-sm sm:leading-6">
+					{node.prompt}
+				</p>
 			</div>
-			<div class="flex items-start gap-3">
+			<div class="flex flex-wrap items-start gap-2.5">
 				<span
-					class={`rounded-full px-2 py-1 text-[11px] uppercase ${node.status === 'active' ? 'bg-primary/15 text-primary' : 'bg-surface-elevated text-text-muted'}`}
+					class={`rounded-full px-2 py-0.5 text-[10px] font-medium tracking-[0.14em] uppercase ${node.status === 'active' ? 'bg-primary/15 text-primary' : 'bg-surface-elevated text-text-muted'}`}
 				>
 					{node.status}
 				</span>
 				<div
-					class="rounded-2xl border border-border bg-surface/70 px-4 py-3 text-sm text-text-muted"
+					class="max-w-[14rem] rounded-xl border border-border bg-surface/70 px-3 py-2 text-[11px] leading-4 text-text-muted"
 				>
-					<div>Node ID</div>
-					<div class="mt-1 font-mono text-text">{node.id}</div>
+					<div class="tracking-[0.12em] uppercase">Node ID</div>
+					<div class="mt-1 font-mono text-[11px] break-all text-text">{node.id}</div>
 				</div>
 			</div>
 		</div>

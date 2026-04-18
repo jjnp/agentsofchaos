@@ -174,12 +174,12 @@
 	});
 </script>
 
-<nav class="flex h-full flex-col gap-1 overflow-y-auto pr-1" aria-label="Changed files">
+<nav class="flex h-full flex-col gap-0.5 overflow-y-auto pr-1" aria-label="Changed files">
 	{#each rows as row (row.id)}
 		{#if row.kind === 'directory'}
 			<button
 				type="button"
-				class="flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-xs text-text-muted transition hover:bg-surface-elevated/60 hover:text-text"
+				class="flex w-full items-center gap-1.5 rounded-lg px-2 py-0.5 text-left text-[11px] text-text-muted transition hover:bg-surface-elevated/60 hover:text-text"
 				style={`padding-left: ${row.depth * 0.875 + 0.5}rem`}
 				aria-label={row.path}
 				onclick={() => toggleDirectory(row.path)}
@@ -190,13 +190,13 @@
 		{:else if row.file}
 			<button
 				type="button"
-				class={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${selectedPath === row.path ? 'bg-primary/10 text-text' : 'text-text-muted hover:bg-surface-elevated/80 hover:text-text'}`}
+				class={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 rounded-lg px-2 py-1 text-left text-xs transition ${selectedPath === row.path ? 'bg-primary/10 text-text' : 'text-text-muted hover:bg-surface-elevated/80 hover:text-text'}`}
 				style={`padding-left: ${row.depth * 0.875 + 0.5}rem`}
 				aria-label={row.path}
 				onclick={() => onSelect(row.path)}
 			>
 				<div class="min-w-0 truncate">{row.label}</div>
-				<div class="flex items-center gap-2 text-[11px] font-medium">
+				<div class="flex items-center gap-1.5 text-[10px] font-medium">
 					<span class="text-success">+{row.file.additions}</span>
 					<span class="text-danger">-{row.file.deletions}</span>
 				</div>

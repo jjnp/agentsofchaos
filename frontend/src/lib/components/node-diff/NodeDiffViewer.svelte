@@ -118,9 +118,11 @@
 	});
 </script>
 
-<section class="flex min-h-[42rem] flex-col gap-4">
+<section class="flex min-h-[30rem] flex-col gap-3">
 	{#if loadingOverview}
-		<section class="rounded-3xl border border-border bg-surface/70 p-8 text-sm text-text-muted">
+		<section
+			class="rounded-3xl border border-border bg-surface/70 p-5 text-xs text-text-muted sm:text-sm"
+		>
 			Loading node diff overview…
 		</section>
 	{:else if overviewError}
@@ -136,10 +138,12 @@
 		</section>
 	{:else if overview}
 		<div class="grid gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
-			<aside class="flex min-h-0 flex-col gap-4">
-				<section class="rounded-2xl border border-border bg-surface/80 p-4">
-					<h3 class="text-sm font-semibold tracking-[0.18em] text-text uppercase">Change totals</h3>
-					<div class="mt-3 grid grid-cols-3 gap-3 text-center text-sm">
+			<aside class="flex min-h-0 flex-col gap-3">
+				<section class="rounded-2xl border border-border bg-surface/80 p-3.5">
+					<h3 class="text-[11px] font-semibold tracking-[0.18em] text-text uppercase">
+						Change totals
+					</h3>
+					<div class="mt-2.5 grid grid-cols-3 gap-2.5 text-center text-xs sm:text-sm">
 						<div class="rounded-2xl bg-surface-elevated px-3 py-3">
 							<div class="text-lg font-semibold text-text">{overview.totals.files}</div>
 							<div class="text-text-muted">Files</div>
@@ -156,8 +160,8 @@
 				</section>
 
 				<section class="min-h-0 rounded-2xl border border-border bg-surface/80 p-3">
-					<div class="mb-3 flex items-center justify-between gap-3 px-1">
-						<h3 class="text-sm font-semibold tracking-[0.18em] text-text uppercase">
+					<div class="mb-2.5 flex items-center justify-between gap-3 px-1">
+						<h3 class="text-[11px] font-semibold tracking-[0.18em] text-text uppercase">
 							Changed files
 						</h3>
 						<span class="text-xs text-text-muted">{overview.files.length}</span>
