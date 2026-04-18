@@ -125,8 +125,9 @@ class WorkerHandle {
     this.session = session;
     this.slot = slot;
     this.sourceImage = sourceImage;
-    this.containerName = `aoc-${session.id}-slot-${slot + 1}`;
     this.label = `pi-${slot + 1}`;
+    this.agentUuid = `piagent_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+    this.containerName = '';
     this.container = null;
     this.ws = null;
     this.sessionId = null;
@@ -138,6 +139,7 @@ class WorkerHandle {
 
   async start() {
     await ensureNetwork();
+    this.containerName = `aoc-${this.agentUuid}`;
     const container = await docker.createContainer({
       Image: this.sourceImage,
       name: this.containerName,
@@ -145,13 +147,13 @@ class WorkerHandle {
         `OPENAI_API_KEY=${process.env.OPENAI_API_KEY || ''}`,
         `PI_MODEL=${PI_MODEL}`,
         `INSTANCE_LABEL=${this.label}`,
+        `PI_AGENT_UUID=${this.agentUuid}`,
         `PORT=${WORKER_INTERNAL_PORT}`,
         'PI_WORKSPACE=/workspace',
         'PI_CODING_AGENT_DIR=/state/pi-agent',
       ],
       ExposedPorts: { [`${WORKER_INTERNAL_PORT}/tcp`]: {} },
       HostConfig: {
-        AutoRemove: true,
         NetworkMode: WORKER_NETWORK,
         Memory: 2147483648,
         NanoCpus: 2_000_000_000,
@@ -160,12 +162,13 @@ class WorkerHandle {
         'agentsofchaos.session': this.session.id,
         'agentsofchaos.slot': String(this.slot),
         'agentsofchaos.role': 'worker',
+        'agentsofchaos.agent_uuid': this.agentUuid,
       },
     });
 
     this.container = container;
     await container.start();
-    this.emit({ type: 'worker_container_started', containerName: this.containerName, image: this.sourceImage });
+    this.emit({ type: 'worker_container_started', containerName: this.containerName, image: this.sourceImage, agentUuid: this.agentUuid });
     await this.connectWebSocket();
   }
 
@@ -186,7 +189,7 @@ class WorkerHandle {
             ws.on('message', (buffer) => {
               const payload = JSON.parse(buffer.toString('utf8'));
               if (payload.type === 'session_ready') this.sessionId = payload.sessionId;
-              this.emit(payload);
+              this.emit({ agentUuid: this.agentUuid, containerName: this.containerName, ...payload });
             });
             ws.on('close', () => {
               this.emit({ type: 'worker_socket_closed' });
@@ -403,26 +406,42 @@ class WorkerHandle {
   async replaceFromImage(image) {
     await this.stop();
     this.sourceImage = image;
+    this.agentUuid = `piagent_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
     await this.start();
   }
 
   async stop() {
     if (this.ws) {
-      try { this.ws.close(); } catch {}
+      try { this.ws.terminate(); } catch {}
       this.ws = null;
     }
 
     if (!this.container) return;
 
+    const container = this.container;
+    const name = this.containerName;
+
     try {
-      await this.container.stop({ t: 1 });
+      await container.stop({ t: 1 });
     } catch {}
 
     try {
-      await this.container.remove({ force: true });
+      await container.remove({ force: true });
     } catch {}
 
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      try {
+        await docker.getContainer(container.id).inspect();
+        await delay(250);
+      } catch {
+        break;
+      }
+    }
+
+    this.emit({ type: 'worker_container_removed', containerName: name, agentUuid: this.agentUuid });
     this.container = null;
+    this.containerName = '';
+    this.sessionId = null;
   }
 }
 
@@ -439,48 +458,46 @@ class BrowserSession {
   }
 
   async initialize() {
-    this.emit({ type: 'grid_boot', session: this.id, gridSize: GRID_SIZE, model: PI_MODEL, mergeModel: MERGE_MODEL });
-    for (let slot = 0; slot < GRID_SIZE; slot += 1) {
-      const worker = new WorkerHandle(this, slot, WORKER_IMAGE);
-      this.workers.push(worker);
-      await worker.start();
-      await worker.inspectGitStatus().catch((error) => worker.emit({ type: 'git_status_error', message: error.message }));
-    }
-    this.emit({ type: 'grid_ready', session: this.id, gridSize: GRID_SIZE, model: PI_MODEL });
+    this.emit({ type: 'grid_boot', session: this.id, gridSize: 0, model: PI_MODEL, mergeModel: MERGE_MODEL });
+    this.emit({ type: 'grid_ready', session: this.id, gridSize: 0, model: PI_MODEL });
   }
 
   getWorker(slot) {
-    if (!Number.isInteger(slot) || slot < 0 || slot >= this.workers.length) {
+    if (!Number.isInteger(slot) || slot < 0 || slot >= this.workers.length || !this.workers[slot]) {
       throw new Error(`Invalid slot: ${slot}`);
     }
     return this.workers[slot];
+  }
+
+  async createInstance(sourceImage = WORKER_IMAGE) {
+    const slot = this.workers.length;
+    const worker = new WorkerHandle(this, slot, sourceImage);
+    this.workers.push(worker);
+    await worker.start();
+    await worker.inspectGitStatus().catch((error) => worker.emit({ type: 'git_status_error', message: error.message }));
+    this.emit({ type: 'instance_created', slot, label: worker.label, agentUuid: worker.agentUuid });
+    return worker;
   }
 
   prompt(slot, message) {
     this.getWorker(slot).send({ type: 'prompt', message });
   }
 
-  promptAll(message) {
-    this.workers.forEach((worker) => worker.send({ type: 'prompt', message }));
+  async stopInstance(slot) {
+    const worker = this.getWorker(slot);
+    const label = worker.label;
+    const agentUuid = worker.agentUuid;
+    await worker.stop();
+    this.workers[slot] = null;
+    this.emit({ type: 'instance_stopped', slot, label, agentUuid });
   }
 
-  abort(slot) {
-    this.getWorker(slot).send({ type: 'abort' });
-  }
-
-  abortAll() {
-    this.workers.forEach((worker) => worker.send({ type: 'abort' }));
-  }
-
-  async fork(sourceSlot, targetSlot) {
-    if (sourceSlot === targetSlot) throw new Error('Source and target slots must differ');
+  async fork(sourceSlot) {
     const source = this.getWorker(sourceSlot);
-    const target = this.getWorker(targetSlot);
-    this.emit({ type: 'fork_start', sourceSlot, targetSlot, sourceLabel: source.label, targetLabel: target.label });
+    this.emit({ type: 'fork_start', sourceSlot, sourceLabel: source.label });
     const image = await source.commitSnapshot();
-    await target.replaceFromImage(image);
-    await target.inspectGitStatus().catch((error) => target.emit({ type: 'git_status_error', message: error.message }));
-    this.emit({ type: 'fork_complete', sourceSlot, targetSlot, image });
+    const target = await this.createInstance(image);
+    this.emit({ type: 'fork_complete', sourceSlot, targetSlot: target.slot, targetLabel: target.label, image });
   }
 
   async prepareMergeBundle(sourceSlot, targetSlot) {
@@ -547,7 +564,7 @@ class BrowserSession {
   }
 
   async dispose() {
-    await Promise.all(this.workers.map((worker) => worker.stop().catch(() => {})));
+    await Promise.all(this.workers.filter(Boolean).map((worker) => worker.stop().catch(() => {})));
     await Promise.all([...this.snapshotImages].map(async (image) => {
       try {
         await docker.getImage(image).remove({ force: true });
@@ -605,11 +622,10 @@ wss.on('connection', async (ws) => {
   ws.on('message', async (buffer) => {
     try {
       const message = JSON.parse(buffer.toString('utf8'));
+      if (message.type === 'create_instance') return await session.createInstance();
       if (message.type === 'prompt') return session.prompt(message.target, message.message);
-      if (message.type === 'prompt_all') return session.promptAll(message.message);
-      if (message.type === 'abort') return session.abort(message.target);
-      if (message.type === 'abort_all') return session.abortAll();
-      if (message.type === 'fork') return await session.fork(message.source, message.target);
+      if (message.type === 'stop_instance') return await session.stopInstance(message.target);
+      if (message.type === 'fork') return await session.fork(message.source);
       if (message.type === 'prepare_merge') return await session.prepareMergeBundle(message.source, message.target);
       if (message.type === 'merge') return await session.merge(message.source, message.target);
       sendJson(ws, { type: 'bridge_error', message: 'Unsupported client message' });

@@ -4,36 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>agentsofchaos docker grid</title>
-    <style>
-      :root { color-scheme: dark; }
-      body { font-family: Inter, system-ui, sans-serif; margin: 0; background: #0b1020; color: #e5e7eb; }
-      .wrap { max-width: 1550px; margin: 0 auto; padding: 24px; }
-      .header { display: flex; justify-content: space-between; gap: 16px; align-items: start; margin-bottom: 20px; }
-      .muted { color: #94a3b8; }
-      .pill { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #1d4ed8; font-size: 12px; }
-      .global, .card { background: #121933; border: 1px solid #243056; border-radius: 12px; padding: 16px; }
-      .global { margin-bottom: 20px; }
-      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-      textarea, select, button { font: inherit; }
-      textarea, select { width: 100%; box-sizing: border-box; background: #09111f; color: #e5e7eb; border: 1px solid #334155; border-radius: 8px; padding: 10px 12px; }
-      textarea { min-height: 84px; resize: vertical; }
-      button { background: #2563eb; color: white; border: 0; border-radius: 8px; padding: 10px 14px; cursor: pointer; }
-      button.secondary { background: #475569; }
-      button.warn { background: #7c3aed; }
-      .row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-      .card-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
-      .terminal { background: #020617; color: #d1fae5; border: 1px solid #1e293b; border-radius: 10px; padding: 12px; height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.45; margin-bottom: 12px; }
-      .event-box { background: #0f172a; color: #cbd5e1; border-radius: 10px; padding: 10px; height: 130px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
-      label { display: block; margin-bottom: 6px; }
-      .action-grid { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: end; margin-top: 12px; }
-      @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } .header { flex-direction: column; } .action-grid { grid-template-columns: 1fr; } }
-    </style>
+    <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <div class="wrap">
       <div class="header">
         <div>
-          <h1 style="margin: 0 0 8px">agentsofchaos: 2×2 dockerized pi grid</h1>
+          <h1 style="margin: 0 0 8px">agentsofchaos</h1>
           <div id="status" class="muted">Connecting to orchestrator…</div>
         </div>
         <div>
@@ -41,13 +18,9 @@
         </div>
       </div>
 
-      <section class="global">
-        <label for="broadcastPrompt">Broadcast prompt to all workers</label>
-        <textarea id="broadcastPrompt" placeholder="Ask all four instances to inspect the repo, propose changes, or take different approaches"></textarea>
-        <div class="row">
-          <button id="broadcastSend">Send to all</button>
-          <button id="broadcastAbort" class="secondary">Abort all</button>
-        </div>
+      <section class="toolbar">
+        <div class="muted">Start empty, then create instances as needed.</div>
+        <button id="newInstance">New instance</button>
       </section>
 
       <section id="grid" class="grid"></section>
@@ -64,191 +37,22 @@
         <textarea class="prompt" placeholder="Send a prompt to this worker"></textarea>
         <div class="row">
           <button class="send">Send</button>
-          <button class="abort secondary">Abort</button>
+          <button class="fork secondary">Fork</button>
+          <button class="stop danger">Stop</button>
         </div>
-        <div class="action-grid">
+        <div class="merge-row">
           <div>
-            <label>Use this instance as source for target slot</label>
-            <select class="targetSelect"></select>
+            <label>Merge this instance into</label>
+            <select class="mergeTarget"></select>
           </div>
-          <button class="fork">Fork</button>
+          <button class="bundle secondary">Bundle</button>
           <button class="merge warn">Merge</button>
-        </div>
-        <div class="row">
-          <button class="bundle secondary">Prepare bundle only</button>
         </div>
         <div style="margin-top: 12px" class="muted">Recent events</div>
         <div class="event-box"></div>
       </article>
     </template>
 
-    <script>
-      const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-      const ws = new WebSocket(`${protocol}://${location.host}`);
-      const statusEl = document.getElementById('status');
-      const metaEl = document.getElementById('meta');
-      const gridEl = document.getElementById('grid');
-      const template = document.getElementById('cardTemplate');
-      const broadcastPromptEl = document.getElementById('broadcastPrompt');
-      const broadcastSendBtn = document.getElementById('broadcastSend');
-      const broadcastAbortBtn = document.getElementById('broadcastAbort');
-
-      const cards = new Map();
-      const GRID_SIZE = 4;
-
-      function createCard(index) {
-        const fragment = template.content.cloneNode(true);
-        const title = fragment.querySelector('.title');
-        const meta = fragment.querySelector('.slot-meta');
-        const terminal = fragment.querySelector('.terminal');
-        const prompt = fragment.querySelector('.prompt');
-        const send = fragment.querySelector('.send');
-        const abort = fragment.querySelector('.abort');
-        const eventBox = fragment.querySelector('.event-box');
-        const targetSelect = fragment.querySelector('.targetSelect');
-        const forkBtn = fragment.querySelector('.fork');
-        const mergeBtn = fragment.querySelector('.merge');
-        const bundleBtn = fragment.querySelector('.bundle');
-
-        title.textContent = `Instance ${index + 1}`;
-        meta.textContent = 'booting';
-
-        for (let i = 0; i < GRID_SIZE; i += 1) {
-          if (i === index) continue;
-          const option = document.createElement('option');
-          option.value = String(i);
-          option.textContent = `Slot ${i + 1}`;
-          targetSelect.appendChild(option);
-        }
-
-        send.addEventListener('click', () => {
-          const message = prompt.value.trim();
-          if (!message) return;
-          ws.send(JSON.stringify({ type: 'prompt', target: index, message }));
-        });
-
-        abort.addEventListener('click', () => {
-          ws.send(JSON.stringify({ type: 'abort', target: index }));
-        });
-
-        forkBtn.addEventListener('click', () => {
-          ws.send(JSON.stringify({ type: 'fork', source: index, target: Number(targetSelect.value) }));
-        });
-
-        mergeBtn.addEventListener('click', () => {
-          ws.send(JSON.stringify({ type: 'merge', source: index, target: Number(targetSelect.value) }));
-        });
-
-        bundleBtn.addEventListener('click', () => {
-          ws.send(JSON.stringify({ type: 'prepare_merge', source: index, target: Number(targetSelect.value) }));
-        });
-
-        gridEl.appendChild(fragment);
-        cards.set(index, { meta, terminal, prompt, eventBox, events: [] });
-      }
-
-      for (let i = 0; i < GRID_SIZE; i += 1) createCard(i);
-
-      function appendTerminal(index, text) {
-        const card = cards.get(index);
-        if (!card || !text) return;
-        card.terminal.textContent += text;
-        card.terminal.scrollTop = card.terminal.scrollHeight;
-      }
-
-      function pushEvent(index, payload) {
-        const card = cards.get(index);
-        if (!card) return;
-        card.events.unshift(JSON.stringify(payload, null, 2));
-        card.eventBox.textContent = card.events.slice(0, 6).join('\n\n');
-      }
-
-      ws.addEventListener('open', () => {
-        statusEl.textContent = 'Connected';
-      });
-
-      ws.addEventListener('close', () => {
-        statusEl.textContent = 'Disconnected';
-      });
-
-      ws.addEventListener('message', (event) => {
-        const payload = JSON.parse(event.data);
-
-        if (payload.type === 'grid_boot') {
-          metaEl.textContent = `${payload.gridSize} workers • ${payload.model} • merge ${payload.mergeModel} • session ${payload.session}`;
-          return;
-        }
-
-        if (payload.type === 'grid_ready') {
-          statusEl.textContent = 'All workers ready';
-          return;
-        }
-
-        if (typeof payload.slot === 'number') {
-          pushEvent(payload.slot, payload);
-        }
-
-        if (payload.type === 'session_ready') {
-          const card = cards.get(payload.slot);
-          if (card) card.meta.textContent = `${payload.label} ready`;
-          return;
-        }
-
-        if (payload.type === 'session_output') {
-          appendTerminal(payload.slot, payload.text);
-          return;
-        }
-
-        if (payload.type === 'session_exit') {
-          const card = cards.get(payload.slot);
-          if (card) card.meta.textContent = `${payload.label} exited`;
-          return;
-        }
-
-        if (payload.type === 'fork_start') {
-          statusEl.textContent = `Forking slot ${payload.sourceSlot + 1} into slot ${payload.targetSlot + 1}...`;
-          return;
-        }
-
-        if (payload.type === 'fork_complete') {
-          statusEl.textContent = `Fork complete: slot ${payload.sourceSlot + 1} -> slot ${payload.targetSlot + 1}`;
-          return;
-        }
-
-        if (payload.type === 'merge_prep_start') {
-          statusEl.textContent = `Preparing merge bundle from slot ${payload.sourceSlot + 1} into slot ${payload.targetSlot + 1}...`;
-          return;
-        }
-
-        if (payload.type === 'merge_prep_complete') {
-          statusEl.textContent = `Bundle prepared: slot ${payload.sourceSlot + 1} -> slot ${payload.targetSlot + 1}`;
-          return;
-        }
-
-        if (payload.type === 'merge_start') {
-          statusEl.textContent = `Merging slot ${payload.sourceSlot + 1} into slot ${payload.targetSlot + 1}...`;
-          return;
-        }
-
-        if (payload.type === 'merge_complete') {
-          statusEl.textContent = `Merge finished: slot ${payload.sourceSlot + 1} -> slot ${payload.targetSlot + 1}`;
-          return;
-        }
-
-        if (payload.type === 'bridge_error') {
-          statusEl.textContent = `Error: ${payload.message}`;
-        }
-      });
-
-      broadcastSendBtn.addEventListener('click', () => {
-        const message = broadcastPromptEl.value.trim();
-        if (!message) return;
-        ws.send(JSON.stringify({ type: 'prompt_all', message }));
-      });
-
-      broadcastAbortBtn.addEventListener('click', () => {
-        ws.send(JSON.stringify({ type: 'abort_all' }));
-      });
-    </script>
+    <script type="module" src="/app.js"></script>
   </body>
 </html>

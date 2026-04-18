@@ -9,6 +9,7 @@ const PORT = Number(process.env.PORT || 3000);
 const PI_WORKSPACE = process.env.PI_WORKSPACE || '/workspace';
 const PI_MODEL = process.env.PI_MODEL || 'openai/gpt-4o-mini';
 const INSTANCE_LABEL = process.env.INSTANCE_LABEL || 'pi-worker';
+const PI_AGENT_UUID = process.env.PI_AGENT_UUID || 'piagent_local';
 const PI_AGENT_DIR = process.env.PI_CODING_AGENT_DIR || '/state/pi-agent';
 const PI_BIN = process.env.PI_BIN || path.join(__dirname, 'node_modules/.bin/pi');
 
@@ -144,8 +145,9 @@ class PiRpcSession {
       workspace: PI_WORKSPACE,
       agentDir: PI_AGENT_DIR,
       label: INSTANCE_LABEL,
+      agentUuid: PI_AGENT_UUID,
     });
-    sendJson(ws, { type: 'session_output', text: `> ${INSTANCE_LABEL} ready (${PI_MODEL}) in ${PI_WORKSPACE}\n` });
+    sendJson(ws, { type: 'session_output', text: `> ${INSTANCE_LABEL} ready (${PI_MODEL}) in ${PI_WORKSPACE} [${PI_AGENT_UUID}]\n` });
   }
 
   unregister(ws) {
