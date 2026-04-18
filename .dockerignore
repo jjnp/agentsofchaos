@@ -1,0 +1,10 @@
+node_modules
+**/node_modules
+**/.env
+.codex
+.npm
+.pi
+.ssh
+apps/pi-rpc/node_modules
+apps/orchestrator/node_modules
+apps/pi-worker/node_modules
