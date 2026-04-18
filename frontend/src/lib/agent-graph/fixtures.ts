@@ -5,7 +5,7 @@ export const demoAgentNodes = [
 		id: '550e8400-e29b-41d4-a716-446655440000',
 		name: 'Root',
 		parentId: null,
-		status: 'running',
+		status: 'completed',
 		details: {
 			contextUsage: { tokens: 1480, percentage: 24 }
 		}
@@ -14,7 +14,7 @@ export const demoAgentNodes = [
 		id: '550e8400-e29b-41d4-a716-446655440001',
 		name: 'Token rotation',
 		parentId: '550e8400-e29b-41d4-a716-446655440000',
-		status: 'running',
+		status: 'completed',
 		details: {
 			contextUsage: { tokens: 1120, percentage: 18 }
 		}
@@ -59,7 +59,7 @@ export const demoAgentNodes = [
 		id: '550e8400-e29b-41d4-a716-446655440006',
 		name: 'Threat model',
 		parentId: '550e8400-e29b-41d4-a716-446655440001',
-		status: 'running',
+		status: 'completed',
 		details: {
 			contextUsage: { tokens: 980, percentage: 16 }
 		}

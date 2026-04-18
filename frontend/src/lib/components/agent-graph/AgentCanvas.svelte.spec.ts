@@ -41,5 +41,42 @@ describe('AgentCanvas', () => {
 		const connection = screen.container.querySelector('[data-connection-child-id]');
 		expect(connection).not.toBeNull();
 		expect(connection?.getAttribute('data-connection-child-id')).toBe(childNode.id);
+
+		const runningSpinner = screen.container.querySelector(
+			`[data-node-spinner-for="${rootNode.id}"]`
+		);
+		const completedSpinner = screen.container.querySelector(
+			`[data-node-spinner-for="${childNode.id}"]`
+		);
+		expect(runningSpinner).not.toBeNull();
+		expect(completedSpinner).toBeNull();
+	});
+
+	it('renders dashed merged-node connection lines with direction metadata', async () => {
+		const sourceNode = createAgentNode({
+			id: '550e8400-e29b-41d4-a716-446655440010',
+			name: 'Merged source',
+			status: 'completed'
+		});
+		const targetNode = createAgentNode({
+			id: '550e8400-e29b-41d4-a716-446655440011',
+			name: 'Merged target',
+			status: 'running',
+			mergedNodes: [sourceNode.id]
+		});
+
+		const screen = await render(AgentCanvas, {
+			nodes: [sourceNode, targetNode],
+			placements: [
+				createAgentNodePlacement({ nodeId: sourceNode.id, x: -140, y: 0 }),
+				createAgentNodePlacement({ nodeId: targetNode.id, x: 140, y: 0 })
+			],
+			selectedNodeId: targetNode.id
+		});
+
+		const mergedConnection = screen.container.querySelector('[data-merged-source-node-id]');
+		expect(mergedConnection).not.toBeNull();
+		expect(mergedConnection?.getAttribute('data-merged-source-node-id')).toBe(sourceNode.id);
+		expect(mergedConnection?.getAttribute('data-merged-target-node-id')).toBe(targetNode.id);
 	});
 });

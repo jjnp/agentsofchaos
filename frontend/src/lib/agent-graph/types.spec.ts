@@ -18,6 +18,7 @@ describe('agent graph schemas', () => {
 			id: '550e8400-e29b-41d4-a716-446655440000',
 			name: 'Root node',
 			status: 'running',
+			mergedNodes: ['550e8400-e29b-41d4-a716-446655440001'],
 			details: {
 				contextUsage: { tokens: 1024, percentage: 16 }
 			}
@@ -27,6 +28,18 @@ describe('agent graph schemas', () => {
 		expect(safeParse(agentNodeDetailsSchema, node.details).success).toBe(true);
 		expect(safeParse(agentNodeStatusSchema, node.status).success).toBe(true);
 		expect(isAgentNodeId(node.id)).toBe(true);
+		expect(node.mergedNodes).toEqual(['550e8400-e29b-41d4-a716-446655440001']);
+	});
+
+	it('normalizes merged nodes into a unique set-like list', () => {
+		const node = createAgentNode({
+			id: '550e8400-e29b-41d4-a716-446655440000',
+			name: 'Root node',
+			status: 'running',
+			mergedNodes: ['550e8400-e29b-41d4-a716-446655440001', '550e8400-e29b-41d4-a716-446655440001']
+		});
+
+		expect(node.mergedNodes).toEqual(['550e8400-e29b-41d4-a716-446655440001']);
 	});
 
 	it('keeps node placement separate from node identity', () => {
@@ -48,12 +61,14 @@ describe('agent graph schemas', () => {
 			name: AgentNode['name'];
 			parentId: string | null;
 			status: string;
+			mergedNodes: string[];
 			details: AgentNode['details'];
 		} = {
 			id: 'not-a-uuid',
 			name: 'Broken node',
 			parentId: null,
 			status: 'broken',
+			mergedNodes: ['still-not-a-uuid'],
 			details: null
 		};
 

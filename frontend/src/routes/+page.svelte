@@ -41,7 +41,7 @@
 	);
 	const selectedNode = $derived(nodes.find((node) => node.id === selectedNodeId) ?? null);
 
-	const getForkPlacement = (
+	const getChildPlacement = (
 		parentNodeId: AgentNodeId,
 		childNodeId: AgentNodeId,
 		currentPlacements: readonly AgentNodePlacement[],
@@ -72,7 +72,7 @@
 		}
 
 		const nextNode = fork(selectedNode, parsedPrompt.output);
-		const nextPlacement = getForkPlacement(selectedNode.id, nextNode.id, activePlacements, nodes);
+		const nextPlacement = getChildPlacement(selectedNode.id, nextNode.id, activePlacements, nodes);
 
 		nodes = [...nodes, nextNode];
 		basePlacements = [...basePlacements, nextPlacement];
@@ -82,13 +82,22 @@
 
 	const handleMerge = (sourceNodeId: AgentNodeId, targetNodeId: AgentNodeId) => {
 		const sourceNode = nodes.find((node) => node.id === sourceNodeId);
-		const targetNode = nodes.find((node) => node.id === targetNodeId);
+		const targetNode = nodes.find((node) => node.id === targetNodeId) ?? null;
 		if (!sourceNode || !targetNode) {
 			return;
 		}
 
-		void merge(targetNode, sourceNode);
-		window.alert(`Merge received\nSource: ${sourceNode.name}\nTarget: ${targetNode.name}`);
+		const mergedNode = merge(targetNode, sourceNode);
+		const mergedPlacement = getChildPlacement(
+			targetNode.id,
+			mergedNode.id,
+			activePlacements,
+			nodes
+		);
+
+		nodes = [...nodes, mergedNode];
+		basePlacements = [...basePlacements, mergedPlacement];
+		selectedNodeId = mergedNode.id;
 	};
 </script>
 

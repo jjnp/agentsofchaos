@@ -17,6 +17,7 @@ export type AgentNode = Readonly<{
 	id: AgentNodeId;
 	name: string;
 	parentId: AgentNodeId | null;
+	mergedNodes: readonly AgentNodeId[];
 	status: AgentNodeStatus;
 	details: AgentNodeDetails | null;
 }>;
@@ -46,6 +47,7 @@ export const agentNodeSchema = v.object({
 	id: agentNodeIdSchema,
 	name: v.pipe(v.string(), v.minLength(1)),
 	parentId: v.nullable(agentNodeIdSchema),
+	mergedNodes: v.array(agentNodeIdSchema),
 	status: agentNodeStatusSchema,
 	details: v.nullable(agentNodeDetailsSchema)
 });
@@ -71,6 +73,7 @@ export const createAgentNode = (input: {
 	id?: string;
 	name: string;
 	parentId?: string | null;
+	mergedNodes?: readonly string[];
 	status: AgentNodeStatus;
 	details?: {
 		contextUsage: {
@@ -83,6 +86,7 @@ export const createAgentNode = (input: {
 		id: input.id ?? createAgentNodeId(),
 		name: input.name,
 		parentId: input.parentId ?? null,
+		mergedNodes: Array.from(new Set(input.mergedNodes ?? [])),
 		status: input.status,
 		details: input.details
 			? {
@@ -95,6 +99,7 @@ export const createAgentNode = (input: {
 		...parsedNode,
 		id: parsedNode.id as AgentNodeId,
 		parentId: parsedNode.parentId as AgentNodeId | null,
+		mergedNodes: parsedNode.mergedNodes as AgentNodeId[],
 		status: parsedNode.status as AgentNodeStatus,
 		details: parsedNode.details as AgentNodeDetails | null
 	};

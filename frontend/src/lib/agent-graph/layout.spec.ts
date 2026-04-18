@@ -8,7 +8,9 @@ import {
 	getConnectionSegments,
 	getMaxNodeDepth,
 	getMergePreviewPath,
+	getMergedConnectionSegments,
 	getNodeDepth,
+	getStraightConnectionPath,
 	getViewportAfterZoom
 } from './layout';
 import { createAgentNode, createAgentNodePlacement } from './types';
@@ -53,6 +55,35 @@ describe('agent graph layout helpers', () => {
 				y2: 80
 			}
 		]);
+	});
+
+	it('returns straight merged connection segments for merged nodes only on the target node', () => {
+		const mergedTargetNode = createAgentNode({
+			id: '550e8400-e29b-41d4-a716-446655440003',
+			name: 'Merged target',
+			parentId: rootNode.id,
+			status: 'completed',
+			mergedNodes: [childNode.id]
+		});
+		const mergedTargetPlacement = createAgentNodePlacement({
+			nodeId: mergedTargetNode.id,
+			x: 220,
+			y: 40
+		});
+
+		const segments = getMergedConnectionSegments(
+			[rootNode, childNode, grandchildNode, mergedTargetNode],
+			[...placements, mergedTargetPlacement]
+		);
+
+		expect(segments).toHaveLength(1);
+		expect(segments[0]).toMatchObject({
+			mergedNodeId: childNode.id,
+			targetNodeId: mergedTargetNode.id
+		});
+		expect(segments[0]?.x1).toBeGreaterThan(120);
+		expect(segments[0]?.x2).toBeLessThan(220);
+		expect(getStraightConnectionPath(segments[0]!)).toMatch(/^M [\d.]+ [\d.]+ L [\d.]+ [\d.]+$/);
 	});
 
 	it('computes node depth from parent relationships', () => {

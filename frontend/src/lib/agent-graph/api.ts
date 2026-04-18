@@ -13,9 +13,24 @@ const getForkNodeName = (prompt: ForkPrompt) => {
 		: `${normalizedPrompt.slice(0, 25).trimEnd()}…`;
 };
 
+const getMergeNodeName = (baseNode: AgentNode, incomingNode: AgentNode) => {
+	const normalizedName = `${baseNode.name} + ${incomingNode.name}`.replace(/\s+/g, ' ').trim();
+	return normalizedName.length <= 28 ? normalizedName : `${normalizedName.slice(0, 25).trimEnd()}…`;
+};
+
 export const merge = (baseNode: AgentNode, incomingNode: AgentNode): AgentNode => {
-	void baseNode;
-	return incomingNode;
+	return createAgentNode({
+		name: getMergeNodeName(baseNode, incomingNode),
+		parentId: baseNode.id,
+		mergedNodes: [incomingNode.id],
+		status: 'running',
+		details: {
+			contextUsage: {
+				tokens: 0,
+				percentage: 0
+			}
+		}
+	});
 };
 
 export const fork = (node: AgentNode, prompt: ForkPrompt): AgentNode => {
