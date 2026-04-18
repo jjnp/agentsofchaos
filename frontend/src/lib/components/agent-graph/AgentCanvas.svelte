@@ -8,6 +8,8 @@
 		getConnectionPath,
 		getConnectionSegments,
 		getMergePreviewPath,
+		getMergedConnectionSegments,
+		getStraightConnectionPath,
 		getViewportAfterZoom,
 		type CanvasPoint,
 		type CanvasViewport
@@ -120,6 +122,7 @@
 		new Map(placements.map((placement) => [placement.nodeId, placement]))
 	);
 	const connectionSegments = $derived(getConnectionSegments(nodes, placements));
+	const mergedConnectionSegments = $derived(getMergedConnectionSegments(nodes, placements));
 	const mergeSourcePlacement = $derived(
 		mergeSourceNodeId ? (placementLookup.get(mergeSourceNodeId) ?? null) : null
 	);
@@ -311,12 +314,25 @@
 	<svg class="agent-canvas__scene" aria-label="Agent graph canvas">
 		<defs>
 			<marker
+				id="agent-canvas-merged-arrow"
+				viewBox="0 0 10 10"
+				refX="10"
+				refY="5"
+				markerWidth="10"
+				markerHeight="10"
+				markerUnits="userSpaceOnUse"
+				orient="auto-start-reverse"
+			>
+				<path d="M 0 0 L 10 5 L 0 10 z" class="agent-canvas__merged-arrowhead"></path>
+			</marker>
+			<marker
 				id="agent-canvas-merge-arrow"
 				viewBox="0 0 10 10"
-				refX="8"
+				refX="10"
 				refY="5"
-				markerWidth="7"
-				markerHeight="7"
+				markerWidth="10"
+				markerHeight="10"
+				markerUnits="userSpaceOnUse"
 				orient="auto-start-reverse"
 			>
 				<path d="M 0 0 L 10 5 L 0 10 z" class="agent-canvas__merge-arrowhead"></path>
@@ -350,6 +366,15 @@
 						d={getConnectionPath(segment)}
 						data-connection-child-id={segment.childId}
 						class="agent-canvas__connection"
+					></path>
+				{/each}
+				{#each mergedConnectionSegments as segment (`${segment.mergedNodeId}-${segment.targetNodeId}`)}
+					<path
+						d={getStraightConnectionPath(segment)}
+						data-merged-source-node-id={segment.mergedNodeId}
+						data-merged-target-node-id={segment.targetNodeId}
+						class="agent-canvas__connection agent-canvas__connection--merged"
+						marker-end="url(#agent-canvas-merged-arrow)"
 					></path>
 				{/each}
 				{#if mergePreviewPath}
@@ -430,6 +455,14 @@
 		stroke-width: 1.5;
 		stroke-linecap: round;
 		vector-effect: non-scaling-stroke;
+	}
+
+	.agent-canvas__connection--merged {
+		stroke-dasharray: 6 6;
+	}
+
+	.agent-canvas__merged-arrowhead {
+		fill: color-mix(in srgb, var(--color-primary) 34%, var(--color-text-muted));
 	}
 
 	.agent-canvas__merge-preview {

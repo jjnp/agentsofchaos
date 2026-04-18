@@ -21,10 +21,21 @@ export type ConnectionSegment = Readonly<{
 	y2: number;
 }>;
 
+export type MergedConnectionSegment = Readonly<{
+	mergedNodeId: AgentNodeId;
+	targetNodeId: AgentNodeId;
+	x1: number;
+	y1: number;
+	x2: number;
+	y2: number;
+}>;
+
 const RING_RADIUS_STEP = 220;
 const RING_CHILD_SPREAD = 0.78;
 const TREE_X_STEP = 240;
 const TREE_Y_STEP = 180;
+const ROOT_NODE_CONNECTION_OFFSET = 30;
+const CHILD_NODE_CONNECTION_OFFSET = 24;
 
 export const clampScale = (scale: number, minScale: number, maxScale: number) =>
 	Math.min(Math.max(scale, minScale), maxScale);
@@ -60,6 +71,82 @@ export const getConnectionSegments = (
 			}
 		];
 	});
+};
+
+export const getMergedConnectionSegments = (
+	nodes: readonly AgentNode[],
+	placements: readonly AgentNodePlacement[]
+): MergedConnectionSegment[] => {
+	const placementLookup = getPlacementLookup(placements);
+	const nodeLookup = new Map(nodes.map((node) => [node.id, node]));
+
+	return nodes.flatMap((node) => {
+		const targetPlacement = placementLookup.get(node.id);
+		if (!targetPlacement) {
+			return [];
+		}
+
+		return node.mergedNodes.flatMap((mergedNodeId) => {
+			const mergedNode = nodeLookup.get(mergedNodeId);
+			const mergedNodePlacement = placementLookup.get(mergedNodeId);
+			if (!mergedNodePlacement || !mergedNode) {
+				return [];
+			}
+
+			const trimmedSegment = getTrimmedLineSegment({
+				start: mergedNodePlacement,
+				end: targetPlacement,
+				startOffset: getNodeConnectionOffset(mergedNode),
+				endOffset: getNodeConnectionOffset(node)
+			});
+			if (!trimmedSegment) {
+				return [];
+			}
+
+			return [
+				{
+					mergedNodeId,
+					targetNodeId: node.id,
+					x1: trimmedSegment.x1,
+					y1: trimmedSegment.y1,
+					x2: trimmedSegment.x2,
+					y2: trimmedSegment.y2
+				}
+			];
+		});
+	});
+};
+
+const getNodeConnectionOffset = (node: AgentNode) =>
+	node.parentId === null ? ROOT_NODE_CONNECTION_OFFSET : CHILD_NODE_CONNECTION_OFFSET;
+
+const getTrimmedLineSegment = ({
+	start,
+	end,
+	startOffset,
+	endOffset
+}: {
+	start: Readonly<{ x: number; y: number }>;
+	end: Readonly<{ x: number; y: number }>;
+	startOffset: number;
+	endOffset: number;
+}) => {
+	const dx = end.x - start.x;
+	const dy = end.y - start.y;
+	const distance = Math.hypot(dx, dy);
+	if (distance <= startOffset + endOffset) {
+		return null;
+	}
+
+	const unitX = dx / distance;
+	const unitY = dy / distance;
+
+	return {
+		x1: start.x + unitX * startOffset,
+		y1: start.y + unitY * startOffset,
+		x2: end.x - unitX * endOffset,
+		y2: end.y - unitY * endOffset
+	};
 };
 
 export const getNodeDepth = (targetNode: AgentNode, nodes: readonly AgentNode[]) => {
@@ -343,6 +430,9 @@ export const getConnectionPath = (segment: ConnectionSegment) => {
 
 	return `M ${segment.x1} ${segment.y1} Q ${controlX} ${controlY} ${segment.x2} ${segment.y2}`;
 };
+
+export const getStraightConnectionPath = (segment: ConnectionSegment | MergedConnectionSegment) =>
+	`M ${segment.x1} ${segment.y1} L ${segment.x2} ${segment.y2}`;
 
 export const getMergePreviewPath = (start: CanvasPoint, end: CanvasPoint) => {
 	const dx = end.x - start.x;

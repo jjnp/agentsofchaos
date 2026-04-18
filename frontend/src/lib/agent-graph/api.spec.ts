@@ -9,7 +9,8 @@ describe('agent graph api scaffold', () => {
 		const baseNode = createAgentNode({
 			id: '550e8400-e29b-41d4-a716-446655440000',
 			name: 'Base node',
-			status: 'running'
+			status: 'running',
+			mergedNodes: ['550e8400-e29b-41d4-a716-446655440002']
 		});
 		const incomingNode = createAgentNode({
 			id: '550e8400-e29b-41d4-a716-446655440001',
@@ -18,7 +19,18 @@ describe('agent graph api scaffold', () => {
 			parentId: baseNode.id
 		});
 
-		expect(merge(baseNode, incomingNode)).toBe(incomingNode);
+		const mergedNode = merge(baseNode, incomingNode);
+
+		expect(mergedNode).toMatchObject({
+			parentId: baseNode.id,
+			mergedNodes: ['550e8400-e29b-41d4-a716-446655440001'],
+			status: 'running',
+			details: {
+				contextUsage: { tokens: 0, percentage: 0 }
+			}
+		});
+		expect(mergedNode.id).not.toBe(baseNode.id);
+		expect(baseNode.mergedNodes).toEqual(['550e8400-e29b-41d4-a716-446655440002']);
 
 		const forkedNode = fork(baseNode, 'Investigate auth edge cases');
 

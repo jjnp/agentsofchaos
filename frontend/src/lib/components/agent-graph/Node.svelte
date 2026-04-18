@@ -22,17 +22,21 @@
 
 	const isSelected = $derived(graphState.selectedNodeId === node.id);
 	const isRootNode = $derived(node.parentId === null);
+	const isRunning = $derived(node.status === 'running');
 	const isLeftSide = $derived(!isRootNode && placement.x < 0);
 	const labelAnchor = $derived<LabelAnchor>(isRootNode ? 'middle' : isLeftSide ? 'end' : 'start');
-	const labelOffsetX = $derived(isRootNode ? 0 : isLeftSide ? -18 : 18);
-	const dotRadius = $derived(isRootNode ? 11 : 9);
-	const ringRadius = $derived(isRootNode ? 18 : 15);
+	const labelOffsetX = $derived(isRootNode ? 0 : isLeftSide ? -24 : 24);
+	const dotRadius = $derived(isRootNode ? 16.5 : 13.5);
+	const ringRadius = $derived(isRootNode ? 27 : 22.5);
+	const spinnerRadius = $derived(isRootNode ? 6 : 5);
+	const spinnerOffsetX = $derived(isLeftSide ? dotRadius + 12 : -(dotRadius + 12));
+	const spinnerOffsetY = -1;
 	const showNodeDetails = $derived(graphState.isNodeDetailsVisible(node.id));
 	const showDetails = $derived(node.details !== null && showNodeDetails);
 	const showTitleLabel = $derived(!showNodeDetails);
 	const detailBoxWidth = 152;
 	const detailBoxHeight = 62;
-	const detailBoxOffsetX = $derived(isRootNode ? 22 : isLeftSide ? -(detailBoxWidth + 26) : 26);
+	const detailBoxOffsetX = $derived(isRootNode ? 30 : isLeftSide ? -(detailBoxWidth + 34) : 34);
 	const detailTextAnchor = $derived<LabelAnchor>(isLeftSide ? 'end' : 'start');
 	const detailTextX = $derived(
 		isLeftSide ? detailBoxOffsetX + detailBoxWidth - 12 : detailBoxOffsetX + 12
@@ -100,6 +104,32 @@
 	<circle class="agent-node__selection-ring" r={ringRadius}></circle>
 	<circle class="agent-node__hit" r={ringRadius + 8}></circle>
 	<circle class="agent-node__dot" r={dotRadius}></circle>
+	{#if isRunning}
+		<g
+			transform={`translate(${spinnerOffsetX} ${spinnerOffsetY})`}
+			data-node-spinner-for={node.id}
+			aria-hidden="true"
+		>
+			<g class="agent-node__spinner">
+				<circle class="agent-node__spinner-track" r={spinnerRadius}></circle>
+				<circle
+					class="agent-node__spinner-arc"
+					r={spinnerRadius}
+					pathLength="100"
+					transform="rotate(-90)"
+				></circle>
+				<circle class="agent-node__spinner-head" cx="0" cy={-spinnerRadius} r="1.25"></circle>
+				<animateTransform
+					attributeName="transform"
+					type="rotate"
+					from="0 0 0"
+					to="360 0 0"
+					dur="850ms"
+					repeatCount="indefinite"
+				/>
+			</g>
+		</g>
+	{/if}
 	{#if showTitleLabel}
 		<text
 			class="agent-node__label"
@@ -193,6 +223,36 @@
 	.agent-node__details-name,
 	.agent-node__details-context {
 		font-family: var(--font-sans);
+	}
+
+	.agent-node__spinner {
+		pointer-events: none;
+	}
+
+	.agent-node__spinner-track,
+	.agent-node__spinner-arc {
+		fill: none;
+		stroke: var(--color-primary-accent);
+		stroke-width: 1.6;
+		stroke-linecap: round;
+	}
+
+	.agent-node__spinner-track {
+		opacity: 0.22;
+	}
+
+	.agent-node__spinner-arc {
+		stroke-dasharray: 34 66;
+		filter: drop-shadow(
+			0 0 0.35rem color-mix(in srgb, var(--color-primary-accent) 34%, transparent)
+		);
+	}
+
+	.agent-node__spinner-head {
+		fill: var(--color-primary-accent);
+		filter: drop-shadow(
+			0 0 0.35rem color-mix(in srgb, var(--color-primary-accent) 34%, transparent)
+		);
 	}
 
 	.agent-node__label {
