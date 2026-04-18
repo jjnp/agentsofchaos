@@ -8,12 +8,18 @@ describe('AgentCanvas', () => {
 	it('renders nodes and parent connection lines', async () => {
 		const rootNode = createAgentNode({
 			id: '550e8400-e29b-41d4-a716-446655440000',
-			name: 'Root node'
+			name: 'Root node',
+			details: {
+				contextUsage: { tokens: 1400, percentage: 22 }
+			}
 		});
 		const childNode = createAgentNode({
 			id: '550e8400-e29b-41d4-a716-446655440001',
 			name: 'Child node',
-			parentId: rootNode.id
+			parentId: rootNode.id,
+			details: {
+				contextUsage: { tokens: 640, percentage: 10 }
+			}
 		});
 
 		const screen = await render(AgentCanvas, {
@@ -25,8 +31,10 @@ describe('AgentCanvas', () => {
 			selectedNodeId: childNode.id
 		});
 
-		await expect.element(screen.getByText('Root node')).toBeInTheDocument();
-		await expect.element(screen.getByText('Child node')).toBeInTheDocument();
+		expect(screen.container.textContent).toContain('Root node');
+		expect(screen.container.textContent).toContain('Child node');
+		await expect.element(screen.getByText('Context 22%')).toBeInTheDocument();
+		await expect.element(screen.getByText('Context 10%')).toBeInTheDocument();
 
 		const connection = screen.container.querySelector('[data-connection-child-id]');
 		expect(connection).not.toBeNull();

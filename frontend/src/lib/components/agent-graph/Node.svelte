@@ -16,12 +16,24 @@
 
 	const isSelected = $derived(graphState.selectedNodeId === node.id);
 	const isRootNode = $derived(node.parentId === null);
-	const labelAnchor = $derived<LabelAnchor>(
-		isRootNode ? 'middle' : placement.x < 0 ? 'end' : 'start'
-	);
-	const labelOffsetX = $derived(isRootNode ? 0 : placement.x < 0 ? -18 : 18);
+	const isLeftSide = $derived(!isRootNode && placement.x < 0);
+	const labelAnchor = $derived<LabelAnchor>(isRootNode ? 'middle' : isLeftSide ? 'end' : 'start');
+	const labelOffsetX = $derived(isRootNode ? 0 : isLeftSide ? -18 : 18);
 	const dotRadius = $derived(isRootNode ? 11 : 9);
 	const ringRadius = $derived(isRootNode ? 18 : 15);
+	const showNodeDetails = $derived(graphState.isNodeDetailsVisible(node.id));
+	const showDetails = $derived(node.details !== null && showNodeDetails);
+	const showTitleLabel = $derived(!showNodeDetails);
+	const detailBoxWidth = 152;
+	const detailBoxHeight = 62;
+	const detailBoxOffsetX = $derived(isRootNode ? 22 : isLeftSide ? -(detailBoxWidth + 26) : 26);
+	const detailTextAnchor = $derived<LabelAnchor>(isLeftSide ? 'end' : 'start');
+	const detailTextX = $derived(
+		isLeftSide ? detailBoxOffsetX + detailBoxWidth - 12 : detailBoxOffsetX + 12
+	);
+	const contextUsageText = $derived(
+		node.details ? `Context ${node.details.contextUsage.percentage}%` : ''
+	);
 
 	const handleSelect = () => {
 		graphState.setSelectedNodeId(node.id);
@@ -48,17 +60,43 @@
 		}
 	}}
 >
+	{#if showDetails}
+		<g class="agent-node__details">
+			<rect
+				x={detailBoxOffsetX}
+				y={-detailBoxHeight / 2}
+				width={detailBoxWidth}
+				height={detailBoxHeight}
+				rx="14"
+				class="agent-node__details-panel"
+			></rect>
+			<text x={detailTextX} y="-10" text-anchor={detailTextAnchor} class="agent-node__details-name">
+				{node.name}
+			</text>
+			<text
+				x={detailTextX}
+				y="10"
+				text-anchor={detailTextAnchor}
+				class="agent-node__details-context"
+			>
+				{contextUsageText}
+			</text>
+		</g>
+	{/if}
+
 	<circle class="agent-node__selection-ring" r={ringRadius}></circle>
 	<circle class="agent-node__hit" r={ringRadius + 8}></circle>
 	<circle class="agent-node__dot" r={dotRadius}></circle>
-	<text
-		class="agent-node__label"
-		x={labelOffsetX}
-		y={isRootNode ? -22 : 3}
-		text-anchor={labelAnchor}
-	>
-		{node.name}
-	</text>
+	{#if showTitleLabel}
+		<text
+			class="agent-node__label"
+			x={labelOffsetX}
+			y={isRootNode ? -22 : 3}
+			text-anchor={labelAnchor}
+		>
+			{node.name}
+		</text>
+	{/if}
 </g>
 
 <style>
@@ -120,7 +158,9 @@
 		fill: var(--color-primary);
 	}
 
-	.agent-node__label {
+	.agent-node__label,
+	.agent-node__details-name,
+	.agent-node__details-context {
 		font-family: var(--font-sans);
 	}
 
@@ -130,5 +170,22 @@
 		cursor: pointer;
 		user-select: none;
 		-webkit-user-select: none;
+	}
+
+	.agent-node__details-panel {
+		fill: rgb(18 19 15 / 0.88);
+		stroke: color-mix(in srgb, var(--color-border) 72%, var(--color-primary) 18%);
+		stroke-width: 1;
+	}
+
+	.agent-node__details-name {
+		fill: var(--color-text);
+		font-size: 0.72rem;
+		font-weight: 600;
+	}
+
+	.agent-node__details-context {
+		fill: color-mix(in srgb, var(--color-primary) 54%, var(--color-text));
+		font-size: 0.68rem;
 	}
 </style>

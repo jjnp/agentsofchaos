@@ -4,42 +4,66 @@ export const demoAgentNodes = [
 	createAgentNode({
 		id: '550e8400-e29b-41d4-a716-446655440000',
 		name: 'Root',
-		parentId: null
+		parentId: null,
+		details: {
+			contextUsage: { tokens: 1480, percentage: 24 }
+		}
 	}),
 	createAgentNode({
 		id: '550e8400-e29b-41d4-a716-446655440001',
 		name: 'Token rotation',
-		parentId: '550e8400-e29b-41d4-a716-446655440000'
+		parentId: '550e8400-e29b-41d4-a716-446655440000',
+		details: {
+			contextUsage: { tokens: 1120, percentage: 18 }
+		}
 	}),
 	createAgentNode({
 		id: '550e8400-e29b-41d4-a716-446655440002',
 		name: 'Silent refresh',
-		parentId: '550e8400-e29b-41d4-a716-446655440001'
+		parentId: '550e8400-e29b-41d4-a716-446655440001',
+		details: {
+			contextUsage: { tokens: 860, percentage: 14 }
+		}
 	}),
 	createAgentNode({
 		id: '550e8400-e29b-41d4-a716-446655440003',
 		name: 'Inline cleanup',
-		parentId: '550e8400-e29b-41d4-a716-446655440000'
+		parentId: '550e8400-e29b-41d4-a716-446655440000',
+		details: {
+			contextUsage: { tokens: 640, percentage: 10 }
+		}
 	}),
 	createAgentNode({
 		id: '550e8400-e29b-41d4-a716-446655440004',
 		name: 'Protocol spec',
-		parentId: '550e8400-e29b-41d4-a716-446655440001'
+		parentId: '550e8400-e29b-41d4-a716-446655440001',
+		details: {
+			contextUsage: { tokens: 1340, percentage: 21 }
+		}
 	}),
 	createAgentNode({
 		id: '550e8400-e29b-41d4-a716-446655440005',
 		name: 'Redis bench',
-		parentId: '550e8400-e29b-41d4-a716-446655440001'
+		parentId: '550e8400-e29b-41d4-a716-446655440001',
+		details: {
+			contextUsage: { tokens: 790, percentage: 12 }
+		}
 	}),
 	createAgentNode({
 		id: '550e8400-e29b-41d4-a716-446655440006',
 		name: 'Threat model',
-		parentId: '550e8400-e29b-41d4-a716-446655440001'
+		parentId: '550e8400-e29b-41d4-a716-446655440001',
+		details: {
+			contextUsage: { tokens: 980, percentage: 16 }
+		}
 	}),
 	createAgentNode({
 		id: '550e8400-e29b-41d4-a716-446655440007',
 		name: 'Type patch',
-		parentId: '550e8400-e29b-41d4-a716-446655440003'
+		parentId: '550e8400-e29b-41d4-a716-446655440003',
+		details: {
+			contextUsage: { tokens: 420, percentage: 7 }
+		}
 	})
 ] as const;
 

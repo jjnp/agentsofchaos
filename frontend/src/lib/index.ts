@@ -11,11 +11,15 @@ export { demoAgentNodePlacements, demoAgentNodes } from './agent-graph/fixtures'
 export { createAgentGraphState, type AgentGraphState } from './agent-graph/state.svelte';
 export {
 	agentNodePlacementSchema,
+	agentNodeDetailsSchema,
+	agentNodeContextUsageSchema,
 	agentNodeSchema,
 	createAgentNode,
 	createAgentNodeId,
 	createAgentNodePlacement,
 	isAgentNodeId,
+	type AgentNodeContextUsage,
+	type AgentNodeDetails,
 	type AgentNode,
 	type AgentNodeId,
 	type AgentNodePlacement

@@ -2,6 +2,7 @@ import { safeParse } from 'valibot';
 import { describe, expect, it } from 'vitest';
 
 import {
+	agentNodeDetailsSchema,
 	agentNodePlacementSchema,
 	agentNodeSchema,
 	createAgentNode,
@@ -14,10 +15,14 @@ describe('agent graph schemas', () => {
 	it('accepts valid agent nodes with UUID ids', () => {
 		const node = createAgentNode({
 			id: '550e8400-e29b-41d4-a716-446655440000',
-			name: 'Root node'
+			name: 'Root node',
+			details: {
+				contextUsage: { tokens: 1024, percentage: 16 }
+			}
 		});
 
 		expect(safeParse(agentNodeSchema, node).success).toBe(true);
+		expect(safeParse(agentNodeDetailsSchema, node.details).success).toBe(true);
 		expect(isAgentNodeId(node.id)).toBe(true);
 	});
 
@@ -38,7 +43,8 @@ describe('agent graph schemas', () => {
 		const invalidNode = {
 			id: 'not-a-uuid',
 			name: 'Broken node',
-			parentId: null
+			parentId: null,
+			details: null
 		} satisfies Omit<AgentNode, 'id' | 'parentId'> & {
 			id: string;
 			parentId: string | null;

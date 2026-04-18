@@ -4,7 +4,7 @@
 	import AgentCanvas from '$lib/components/agent-graph/AgentCanvas.svelte';
 	import AgentCanvasSidebar from '$lib/components/agent-graph/AgentCanvasSidebar.svelte';
 	import type { ControlOption } from '$lib/components/primitives/types';
-	import { layoutModes, type AgentNodeId, type LayoutMode } from '$lib/agent-graph/types';
+	import { layoutModes, type LayoutMode } from '$lib/agent-graph/types';
 
 	const nodes = demoAgentNodes;
 	const basePlacements = demoAgentNodePlacements;
@@ -14,8 +14,8 @@
 		label: mode === 'rings' ? 'Concentric rings' : mode === 'tree' ? 'Tree' : 'Force'
 	}));
 
-	let selectedNodeId = $state<AgentNodeId | null>(nodes[4]?.id ?? nodes[0]?.id ?? null);
 	let activeLayoutMode = $state<LayoutMode>('rings');
+	let showNodeDetailsForAll = $state(true);
 	let isSidebarOpen = $state(true);
 
 	const activePlacements = $derived(
@@ -34,12 +34,18 @@
 
 <div class="canvas-page">
 	<AgentCanvas
-		bind:selectedNodeId
 		bind:activeLayoutMode
+		selectedNodeId={nodes[4]?.id ?? nodes[0]?.id ?? null}
+		{showNodeDetailsForAll}
 		{nodes}
 		placements={activePlacements}
 		class="h-screen rounded-none border-0"
 	/>
 
-	<AgentCanvasSidebar bind:activeLayoutMode bind:isOpen={isSidebarOpen} {layoutModeOptions} />
+	<AgentCanvasSidebar
+		bind:activeLayoutMode
+		bind:showNodeDetailsForAll
+		bind:isOpen={isSidebarOpen}
+		{layoutModeOptions}
+	/>
 </div>
