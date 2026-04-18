@@ -138,6 +138,29 @@ function shortSha(value) {
   return value ? String(value).slice(0, 12) : null;
 }
 
+function extractFileDiffFromPatch(fullPatch, filePath) {
+  const patch = String(fullPatch || '');
+  const header = `diff --git a/${filePath} b/${filePath}`;
+  const start = patch.indexOf(header);
+  if (start === -1) return '';
+  const next = patch.indexOf('\ndiff --git ', start + header.length);
+  return clipText((next === -1 ? patch.slice(start) : patch.slice(start, next)).trim(), 8000);
+}
+
+function extractAssistantText(messages) {
+  const assistants = (messages || []).filter((message) => message?.role === 'assistant');
+  for (let i = assistants.length - 1; i >= 0; i -= 1) {
+    const content = assistants[i]?.content || [];
+    const text = content
+      .filter((item) => item?.type === 'text' && typeof item.text === 'string')
+      .map((item) => item.text)
+      .join(' ')
+      .trim();
+    if (text) return text;
+  }
+  return '';
+}
+
 async function ensureNetwork() {
   const networks = await docker.listNetworks({ filters: { name: [WORKER_NETWORK] } });
   if (networks.some((network) => network.Name === WORKER_NETWORK)) return;
@@ -298,12 +321,46 @@ async function summarizeForkPoint({ label, reason, latestSession, gitDetails, co
   return response.output_text || buildForkPointFallbackSummary({ label, reason, gitDetails, contextUsage, readFiles, modifiedFiles });
 }
 
+async function summarizeChangedFileDirect({ filePath, forkPoint, diffExcerpt }) {
+  const summaryMarkdown = forkPoint?.summary?.markdown || '';
+  if (!openai) {
+    return clipText([
+      `This branch changed ${filePath}.`,
+      diffExcerpt ? `The diff shows targeted edits in this file.` : `The fork-point metadata recorded it as changed in this branch.`,
+      `It likely changed to support the branch goal described in the fork summary, but review the diff for exact intent and risk.`,
+    ].join(' '), 300);
+  }
+
+  const prompt = [
+    'You are explaining one changed file from a coding-agent branch fork point.',
+    'Return only 1-3 concise sentences in plain text.',
+    'Do not use markdown.',
+    'Do not explain your reasoning process.',
+    'Focus on what changed, why it likely changed in this branch, and any notable risk or follow-up.',
+    '',
+    `Changed file: ${filePath}`,
+    '',
+    'Branch summary:',
+    summaryMarkdown || 'No branch summary available.',
+    '',
+    'Unified diff excerpt:',
+    diffExcerpt || 'No file-specific diff excerpt available.',
+  ].join('\n');
+
+  const response = await openai.responses.create({
+    model: MERGE_MODEL,
+    input: prompt,
+  });
+
+  return (response.output_text || '').trim() || `This branch changed ${filePath}, but no explanation summary was returned.`;
+}
+
 class WorkerHandle {
-  constructor(session, slot, sourceImage) {
+  constructor(session, slot, sourceImage, options = {}) {
     this.session = session;
     this.slot = slot;
     this.sourceImage = sourceImage;
-    this.label = `pi-${slot + 1}`;
+    this.label = options.label || `pi-${slot + 1}`;
     this.agentUuid = `piagent_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
     this.containerName = '';
     this.container = null;
@@ -311,10 +368,13 @@ class WorkerHandle {
     this.sessionId = null;
     this.lastGitStatus = null;
     this.lastForkPoint = null;
+    this.eventSink = options.eventSink || null;
   }
 
   emit(payload) {
-    this.session.emit({ slot: this.slot, label: this.label, ...payload });
+    const enriched = { slot: this.slot, label: this.label, ...payload };
+    if (this.eventSink) this.eventSink(enriched);
+    this.session.emit(enriched);
   }
 
   async start() {
@@ -860,6 +920,17 @@ class BrowserSession {
     };
   }
 
+  async createEphemeralWorker(sourceImage, label, eventSink) {
+    const tempSession = {
+      id: `${this.id}-tmp-${randomUUID().slice(0, 8)}`,
+      snapshotImages: this.snapshotImages,
+      emit: () => {},
+    };
+    const worker = new WorkerHandle(tempSession, -1, sourceImage, { label, eventSink });
+    await worker.start();
+    return worker;
+  }
+
   toJSON() {
     return {
       sessionId: this.id,
@@ -885,6 +956,79 @@ class BrowserSession {
     return { accepted: true, slot, queuedAt: Date.now() };
   }
 
+  async explainFile(slot, filePath, mode = 'direct') {
+    const worker = this.getWorker(slot);
+    const forkPoint = await worker.readJsonFile('/state/meta/fork-point.json');
+    if (!filePath || typeof filePath !== 'string') {
+      throw new Error('filePath is required');
+    }
+    if (!(forkPoint?.git?.changedFiles || []).includes(filePath)) {
+      const error = new Error('File was not recorded in fork-point changedFiles');
+      error.code = 'FILE_NOT_IN_FORK_POINT';
+      throw error;
+    }
+
+    const diffExcerpt = extractFileDiffFromPatch(forkPoint?.git?.patch || '', filePath);
+    if (mode === 'ephemeral') {
+      const capturedEvents = [];
+      const ephemeralImage = forkPoint.snapshotImage || worker.sourceImage;
+      const tempWorker = await this.createEphemeralWorker(ephemeralImage, `pi-temp-${slot + 1}`, (event) => capturedEvents.push(event));
+      try {
+        await tempWorker.putFile('/state/meta/explain-file-summary.md', forkPoint?.summary?.markdown || '');
+        await tempWorker.putFile('/state/meta/explain-file-diff.patch', diffExcerpt || '');
+        const prompt = [
+          'You are inside an ephemeral branch created only to explain one changed file to the user.',
+          'Return only 1-3 concise sentences in plain text.',
+          'Do not use markdown.',
+          'Do not describe your reasoning process.',
+          'Do not edit files.',
+          'Focus on what changed, why it likely changed in this branch, and any notable risk or follow-up.',
+          '',
+          `Changed file: ${filePath}`,
+          '',
+          'Read these files first if helpful:',
+          '- /state/meta/explain-file-summary.md',
+          '- /state/meta/explain-file-diff.patch',
+        ].join('\n');
+        tempWorker.send({ type: 'prompt', message: prompt });
+        const agentEnd = await new Promise((resolve, reject) => {
+          const startedAt = Date.now();
+          const timer = setInterval(() => {
+            const found = capturedEvents.find((event) => event.type === 'pi_event' && event.event?.type === 'agent_end');
+            if (found) {
+              clearInterval(timer);
+              resolve(found.event);
+              return;
+            }
+            if (Date.now() - startedAt > 300000) {
+              clearInterval(timer);
+              reject(new Error('Timed out waiting for ephemeral explanation agent_end'));
+            }
+          }, 250);
+        });
+        const summary = extractAssistantText(agentEnd.messages) || await summarizeChangedFileDirect({ filePath, forkPoint, diffExcerpt });
+        return {
+          slot,
+          filePath,
+          mode,
+          summary,
+          forkPointCapturedAt: forkPoint.capturedAt,
+        };
+      } finally {
+        await tempWorker.stop().catch(() => {});
+      }
+    }
+
+    const summary = await summarizeChangedFileDirect({ filePath, forkPoint, diffExcerpt });
+    return {
+      slot,
+      filePath,
+      mode: 'direct',
+      summary,
+      forkPointCapturedAt: forkPoint.capturedAt,
+    };
+  }
+
   async stopInstance(slot) {
     const worker = this.getWorker(slot);
     const label = worker.label;
@@ -900,8 +1044,12 @@ class BrowserSession {
     this.emit({ type: 'fork_start', sourceSlot, sourceLabel: source.label });
     const forkPoint = await source.captureForkPoint('fork');
     const image = await source.commitSnapshot();
+    if (source.lastForkPoint) {
+      source.lastForkPoint.snapshotImage = image;
+      await source.writeJson('/state/meta/fork-point.json', source.lastForkPoint).catch(() => {});
+    }
     const target = await this.createInstance(image);
-    const result = { sourceSlot, targetSlot: target.slot, targetLabel: target.label, image, forkPoint };
+    const result = { sourceSlot, targetSlot: target.slot, targetLabel: target.label, image, forkPoint: { ...forkPoint, snapshotImage: image } };
     this.emit({ type: 'fork_complete', ...result });
     return result;
   }
@@ -937,6 +1085,10 @@ class BrowserSession {
 
     const forkPoint = await target.captureForkPoint('merge integration base', { mergeSourceSlot: sourceSlot, mergeTargetSlot: targetSlot });
     const integrationImage = await target.commitSnapshot();
+    if (target.lastForkPoint) {
+      target.lastForkPoint.snapshotImage = integrationImage;
+      await target.writeJson('/state/meta/fork-point.json', target.lastForkPoint).catch(() => {});
+    }
     const integration = await this.createInstance(integrationImage);
     const integrationSlot = integration.slot;
 
@@ -948,7 +1100,7 @@ class BrowserSession {
       integrationLabel: integration.label,
       integrationAgentUuid: integration.agentUuid,
       image: integrationImage,
-      forkPoint,
+      forkPoint: { ...forkPoint, snapshotImage: integrationImage },
     });
 
     const bundle = await source.exportBundle();
@@ -1054,6 +1206,15 @@ async function handleApiRequest(req, res, url) {
         return sendJsonResponse(res, 202, orchestrator.prompt(slot, body.message));
       }
 
+      if (method === 'POST' && parts[3] === 'explain-file') {
+        const body = await readJsonBody(req);
+        if (!body.filePath || typeof body.filePath !== 'string') {
+          return sendApiError(res, 400, 'BAD_REQUEST', 'filePath is required');
+        }
+        const mode = body.mode === 'ephemeral' ? 'ephemeral' : 'direct';
+        return sendJsonResponse(res, 200, await orchestrator.explainFile(slot, body.filePath, mode));
+      }
+
       if (method === 'GET' && parts[3] === 'artifacts' && parts[4] === 'fork-point') {
         const worker = orchestrator.getWorker(slot);
         try {
@@ -1102,6 +1263,12 @@ async function handleApiRequest(req, res, url) {
 
     return sendApiError(res, 404, 'NOT_FOUND', 'Unknown API route');
   } catch (error) {
+    if (error.code === 'FILE_NOT_IN_FORK_POINT') {
+      return sendApiError(res, 404, 'FILE_NOT_IN_FORK_POINT', error.message);
+    }
+    if (error.message === 'filePath is required') {
+      return sendApiError(res, 400, 'BAD_REQUEST', error.message);
+    }
     const statusCode = /Invalid slot/.test(error.message) ? 404 : 500;
     const code = /Invalid slot/.test(error.message) ? 'INVALID_SLOT' : 'INTERNAL_ERROR';
     return sendApiError(res, statusCode, code, error.message);

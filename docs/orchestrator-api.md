@@ -101,6 +101,32 @@ Queues a prompt for an instance.
 
 Completion should be detected from the SSE or websocket event stream via `pi_event` / `agent_end`.
 
+### `POST /api/instances/:slot/explain-file`
+Explains one changed file from the instance's fork point.
+
+#### Body
+```json
+{
+  "filePath": "frontend/src/routes/+page.svelte",
+  "mode": "direct"
+}
+```
+
+Modes:
+- `direct` — summarize using fork-point summary + file diff
+- `ephemeral` — spawn a temporary analysis worker from the instance snapshot and ask pi directly
+
+#### Response
+```json
+{
+  "slot": 1,
+  "filePath": "frontend/src/routes/+page.svelte",
+  "mode": "direct",
+  "summary": "This branch updates the route component to wire the graph canvas into the page. It likely changed to surface the branching workflow in the UI, and the main risk is coupling the page too tightly to demo-specific state assumptions.",
+  "forkPointCapturedAt": 1776510000000
+}
+```
+
 ### `POST /api/instances/:slot/fork`
 Forks an instance by capturing fork-point metadata and snapshotting its container.
 
