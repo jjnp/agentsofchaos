@@ -123,6 +123,12 @@ Forks an instance by capturing fork-point metadata and snapshotting its containe
       "totalTokens": 12345,
       "latestResponseTokens": 812,
       "assistantMessages": 9
+    },
+    "summary": {
+      "format": "pi-branch-summary-v1",
+      "preview": "Capture a stable fork point for pi-1 during fork.",
+      "readFiles": ["src/foo.ts"],
+      "modifiedFiles": ["src/foo.ts"]
     }
   }
 }
@@ -198,6 +204,13 @@ Semantics:
 
 ### `GET /api/instances/:slot/artifacts/fork-point`
 Returns parsed JSON from `/state/meta/fork-point.json`.
+
+The fork-point artifact now also includes a pi-style branch summary in:
+- `summary.format`
+- `summary.markdown`
+- `summary.preview`
+- `summary.readFiles`
+- `summary.modifiedFiles`
 
 ### `GET /api/instances/:slot/artifacts/merge-details`
 Returns parsed JSON from `/state/meta/merge-details.json`.

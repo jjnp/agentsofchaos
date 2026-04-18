@@ -204,6 +204,100 @@ async function summarizeMergedContext({ source, target, mergeResult }) {
   return response.output_text || '# Merge Context\n\nNo summary returned.';
 }
 
+function buildForkPointFallbackSummary({ label, reason, gitDetails, contextUsage, readFiles, modifiedFiles }) {
+  return [
+    '## Goal',
+    `Capture a stable fork point for ${label} during ${reason}.`,
+    '',
+    '## Constraints & Preferences',
+    '- Preserve current filesystem and pi session state.',
+    '- Summarize the branch state so the next agent or UI can understand the fork boundary.',
+    '',
+    '## Progress',
+    '### Done',
+    `- [x] Captured git head ${shortSha(gitDetails?.head) || 'unknown'}.`,
+    `- [x] Recorded diff summary: ${gitDetails?.shortStat || 'no diff summary available'}.`,
+    '',
+    '### In Progress',
+    '- [ ] No semantic branch summary model output was available; using fallback metadata summary.',
+    '',
+    '### Blocked',
+    '- No additional blockages recorded.',
+    '',
+    '## Key Decisions',
+    `- **Fork reason**: ${reason}.`,
+    `- **Context usage at fork**: ${contextUsage.totalTokens} total assistant tokens across ${contextUsage.assistantMessages} assistant messages.`,
+    '',
+    '## Next Steps',
+    '1. Continue work from the forked child instance or inspect this fork point in the graph UI.',
+    '2. Use the changed-file list and diff summary to understand what diverged before the fork.',
+    '',
+    '## Critical Context',
+    `- Commit subject: ${gitDetails?.subject || 'unknown'}`,
+    `- Diff summary: ${gitDetails?.shortStat || 'none'}`,
+    '',
+    '<read-files>',
+    ...readFiles,
+    '</read-files>',
+    '',
+    '<modified-files>',
+    ...modifiedFiles,
+    '</modified-files>',
+  ].join('\n');
+}
+
+async function summarizeForkPoint({ label, reason, latestSession, gitDetails, contextUsage, readFiles, modifiedFiles }) {
+  if (!openai) {
+    return buildForkPointFallbackSummary({ label, reason, gitDetails, contextUsage, readFiles, modifiedFiles });
+  }
+
+  const prompt = [
+    'You are summarizing a fork point for a coding-agent branch.',
+    'Produce concise markdown using exactly this structure:',
+    '## Goal',
+    '## Constraints & Preferences',
+    '## Progress',
+    '### Done',
+    '### In Progress',
+    '### Blocked',
+    '## Key Decisions',
+    '## Next Steps',
+    '## Critical Context',
+    '<read-files>',
+    '</read-files>',
+    '<modified-files>',
+    '</modified-files>',
+    '',
+    'Keep it under 600 words. Focus on what the branch had accomplished by the fork point and what matters next.',
+    '',
+    `Instance: ${label}`,
+    `Fork reason: ${reason}`,
+    `Git subject: ${gitDetails?.subject || 'unknown'}`,
+    `Git diff summary: ${gitDetails?.shortStat || 'none'}`,
+    `Changed files: ${(gitDetails?.changedFiles || []).join(', ') || 'none'}`,
+    `Assistant message count: ${contextUsage.assistantMessages}`,
+    `Total assistant tokens: ${contextUsage.totalTokens}`,
+    '',
+    'Latest pi session content:',
+    '```jsonl',
+    clipText(latestSession?.content || 'No persisted pi session found.', 12000),
+    '```',
+    '',
+    'Read files to include if relevant:',
+    readFiles.join('\n') || '(none)',
+    '',
+    'Modified files to include if relevant:',
+    modifiedFiles.join('\n') || '(none)',
+  ].join('\n');
+
+  const response = await openai.responses.create({
+    model: MERGE_MODEL,
+    input: prompt,
+  });
+
+  return response.output_text || buildForkPointFallbackSummary({ label, reason, gitDetails, contextUsage, readFiles, modifiedFiles });
+}
+
 class WorkerHandle {
   constructor(session, slot, sourceImage) {
     this.session = session;
@@ -547,6 +641,31 @@ class WorkerHandle {
     const sessionEntries = safeJsonlParse(latestSession?.content || '');
     const contextUsage = summarizeSessionUsage(sessionEntries);
     const latestEntry = sessionEntries.at(-1) || null;
+    const readFiles = [];
+    const modifiedFiles = [...new Set(gitDetails?.changedFiles || [])];
+
+    for (const entry of sessionEntries) {
+      if (entry.role !== 'assistant' || !Array.isArray(entry.content)) continue;
+      for (const item of entry.content) {
+        if (!item || item.type !== 'toolCall') continue;
+        const toolName = item.name;
+        const args = item.arguments || {};
+        const pathValue = typeof args.path === 'string' ? args.path : null;
+        if (toolName === 'read' && pathValue) readFiles.push(pathValue);
+        if ((toolName === 'edit' || toolName === 'write') && pathValue && !modifiedFiles.includes(pathValue)) modifiedFiles.push(pathValue);
+      }
+    }
+
+    const summaryMarkdown = await summarizeForkPoint({
+      label: this.label,
+      reason,
+      latestSession,
+      gitDetails,
+      contextUsage,
+      readFiles: [...new Set(readFiles)],
+      modifiedFiles,
+    });
+
     const forkPoint = {
       reason,
       capturedAt: Date.now(),
@@ -572,6 +691,13 @@ class WorkerHandle {
         latestStopReason: contextUsage.latestStopReason,
       },
       contextUsage,
+      summary: {
+        format: 'pi-branch-summary-v1',
+        markdown: summaryMarkdown,
+        preview: summaryMarkdown.split('\n').find((line) => line.trim() && !line.startsWith('##')) || null,
+        readFiles: [...new Set(readFiles)],
+        modifiedFiles,
+      },
       ...extra,
     };
 
@@ -593,6 +719,12 @@ class WorkerHandle {
           totalTokens: forkPoint.contextUsage.totalTokens,
           latestResponseTokens: forkPoint.contextUsage.latestResponseTokens,
           assistantMessages: forkPoint.contextUsage.assistantMessages,
+        },
+        summary: {
+          format: forkPoint.summary.format,
+          preview: forkPoint.summary.preview,
+          readFiles: forkPoint.summary.readFiles,
+          modifiedFiles: forkPoint.summary.modifiedFiles,
         },
       },
     });
