@@ -1,0 +1,14 @@
+{
+  "name": "agentsofchaos-pi-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Single pi worker container exposing a websocket bridge",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@mariozechner/pi-coding-agent": "latest",
+    "ws": "^8.18.3"
+  }
+}
