@@ -24,8 +24,8 @@
 				</h1>
 				<p class="section-copy">
 					The Svelte starter content has been stripped back so the project can grow around the
-					actual product direction. Tailwind CSS is the default styling layer, with theme tokens and
-					semantic utility names ready for reusable components.
+					actual product direction. Tailwind CSS is the default styling layer, with semantic theme
+					variables defined directly in the design system stylesheet for reusable components.
 				</p>
 			</div>
 
@@ -43,7 +43,7 @@
 		<aside class="panel flex flex-col gap-6 p-8">
 			<div>
 				<p class="text-sm font-medium tracking-[0.2em] text-primary-accent uppercase">Theme</p>
-				<h2 class="mt-3 text-2xl font-semibold text-text">Semantic design tokens</h2>
+				<h2 class="mt-3 text-2xl font-semibold text-text">Semantic Tailwind theme variables</h2>
 			</div>
 
 			<div class="grid gap-3">

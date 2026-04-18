@@ -1,7 +1,14 @@
+export { default as Button } from './components/primitives/Button.svelte';
+export { default as Dropdown } from './components/primitives/Dropdown.svelte';
+export { default as Input } from './components/primitives/Input.svelte';
+export { default as AutocompleteInput } from './components/primitives/AutocompleteInput.svelte';
+
 export {
-	themeColors,
-	themeRadii,
-	type ThemeColorName,
-	type ThemeColors,
-	type ThemeRadiusName
-} from './theme/tokens';
+	buttonVariants,
+	controlSizes,
+	controlTones,
+	type ButtonVariant,
+	type ControlOption,
+	type ControlSize,
+	type ControlTone
+} from './components/primitives/types';
