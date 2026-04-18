@@ -4,15 +4,15 @@ import type { AgentGraphState } from './state.svelte';
 
 const agentGraphContextKey = Symbol('agent-graph-state');
 
-export const setAgentGraphContext = (state: AgentGraphState) =>
-	setContext(agentGraphContextKey, state);
+export const setAgentGraphContext = (getState: () => AgentGraphState) =>
+	setContext(agentGraphContextKey, getState);
 
 export const getAgentGraphContext = () => {
-	const state = getContext<AgentGraphState | undefined>(agentGraphContextKey);
+	const getState = getContext<(() => AgentGraphState) | undefined>(agentGraphContextKey);
 
-	if (!state) {
+	if (!getState) {
 		throw new Error('Agent graph context is not available.');
 	}
 
-	return state;
+	return getState();
 };

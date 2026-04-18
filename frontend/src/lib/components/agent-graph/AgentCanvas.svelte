@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { setAgentGraphContext } from '$lib/agent-graph/context';
 	import {
+		getMaxNodeDepth,
+		getRingRadiusForDepth,
 		getCanvasTransform,
 		getConnectionPath,
 		getConnectionSegments,
@@ -8,13 +10,19 @@
 		type CanvasViewport
 	} from '$lib/agent-graph/layout';
 	import { createAgentGraphState } from '$lib/agent-graph/state.svelte';
-	import type { AgentNode, AgentNodeId, AgentNodePlacement } from '$lib/agent-graph/types';
+	import type {
+		AgentNode,
+		AgentNodeId,
+		AgentNodePlacement,
+		LayoutMode
+	} from '$lib/agent-graph/types';
 	import Node from './Node.svelte';
 
 	let {
 		nodes,
 		placements,
 		selectedNodeId = $bindable<AgentNodeId | null>(null),
+		activeLayoutMode = $bindable<LayoutMode>('rings'),
 		minScale = 0.5,
 		maxScale = 2.2,
 		class: className = ''
@@ -22,13 +30,14 @@
 		nodes: readonly AgentNode[];
 		placements: readonly AgentNodePlacement[];
 		selectedNodeId?: AgentNodeId | null;
+		activeLayoutMode?: LayoutMode;
 		minScale?: number;
 		maxScale?: number;
 		class?: string;
 	} = $props();
 
-	const graphState = createAgentGraphState([], [], null, 'rings');
-	setAgentGraphContext(graphState);
+	const graphState = createAgentGraphState([], [], null, activeLayoutMode);
+	setAgentGraphContext(() => graphState);
 
 	let viewport = $state<CanvasViewport>({ x: 0, y: 0, scale: 1 });
 	let canvasElement = $state<HTMLDivElement | null>(null);
@@ -54,7 +63,15 @@
 	});
 
 	$effect(() => {
+		graphState.setActiveLayoutMode(activeLayoutMode);
+	});
+
+	$effect(() => {
 		selectedNodeId = graphState.selectedNodeId;
+	});
+
+	$effect(() => {
+		activeLayoutMode = graphState.activeLayoutMode;
 	});
 
 	const placementLookup = $derived(
@@ -63,6 +80,8 @@
 	const connectionSegments = $derived(
 		getConnectionSegments(graphState.nodes, graphState.placements)
 	);
+	const maxDepth = $derived(getMaxNodeDepth(graphState.nodes));
+	const showDepthRings = $derived(graphState.activeLayoutMode === 'rings');
 	const sceneTransform = $derived(
 		getCanvasTransform(viewport, { width: canvasWidth, height: canvasHeight })
 	);
@@ -121,6 +140,7 @@
 			viewport,
 			deltaY: event.deltaY,
 			pointer,
+			canvasSize: { width: canvasWidth, height: canvasHeight },
 			minScale,
 			maxScale
 		});
@@ -155,11 +175,16 @@
 
 		<rect width="100%" height="100%" fill="url(#agent-canvas-grid)"></rect>
 		<g class="agent-canvas__camera" transform={sceneTransform}>
-			<g class="agent-canvas__rings">
-				<circle r="240"></circle>
-				<circle r="480"></circle>
-				<circle r="720"></circle>
-			</g>
+			{#if showDepthRings}
+				<g class="agent-canvas__rings">
+					{#each Array.from({ length: maxDepth }, (_, index) => index + 1) as depth (depth)}
+						<circle r={getRingRadiusForDepth(depth)}></circle>
+						<text x={getRingRadiusForDepth(depth) + 12} y={-10} class="agent-canvas__ring-label">
+							Depth {String(depth).padStart(2, '0')}
+						</text>
+					{/each}
+				</g>
+			{/if}
 			<g class="agent-canvas__connections">
 				{#each connectionSegments as segment (segment.childId)}
 					<path
@@ -215,6 +240,15 @@
 		stroke: rgb(255 255 255 / 0.07);
 		stroke-dasharray: 4 8;
 		vector-effect: non-scaling-stroke;
+	}
+
+	.agent-canvas__ring-label {
+		fill: var(--color-text-muted);
+		font-size: 0.65rem;
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
+		vector-effect: non-scaling-stroke;
+		user-select: none;
 	}
 
 	.agent-canvas__connection {

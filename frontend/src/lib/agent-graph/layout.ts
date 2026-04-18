@@ -1,4 +1,5 @@
-import type { AgentNode, AgentNodeId, AgentNodePlacement } from './types';
+import { createAgentNodePlacement } from './types';
+import type { AgentNode, AgentNodeId, AgentNodePlacement, LayoutMode } from './types';
 
 export type CanvasViewport = Readonly<{
 	x: number;
@@ -14,6 +15,10 @@ export type ConnectionSegment = Readonly<{
 	x2: number;
 	y2: number;
 }>;
+
+const RING_RADIUS_STEP = 220;
+const TREE_X_STEP = 240;
+const TREE_Y_STEP = 180;
 
 export const clampScale = (scale: number, minScale: number, maxScale: number) =>
 	Math.min(Math.max(scale, minScale), maxScale);
@@ -69,27 +74,36 @@ export const getNodeDepth = (targetNode: AgentNode, nodes: readonly AgentNode[])
 	return depth;
 };
 
+export const getMaxNodeDepth = (nodes: readonly AgentNode[]) =>
+	nodes.reduce((maxDepth, node) => Math.max(maxDepth, getNodeDepth(node, nodes)), 0);
+
 export const getViewportAfterZoom = ({
 	viewport,
 	deltaY,
 	pointer,
+	canvasSize,
 	minScale,
 	maxScale
 }: {
 	viewport: CanvasViewport;
 	deltaY: number;
 	pointer: Readonly<{ x: number; y: number }>;
+	canvasSize: Readonly<{ width: number; height: number }>;
 	minScale: number;
 	maxScale: number;
 }): CanvasViewport => {
 	const zoomFactor = deltaY < 0 ? 1.12 : 0.88;
 	const nextScale = clampScale(viewport.scale * zoomFactor, minScale, maxScale);
 	const scaleRatio = nextScale / viewport.scale;
+	const currentTranslateX = canvasSize.width / 2 + viewport.x;
+	const currentTranslateY = canvasSize.height / 2 + viewport.y;
+	const nextTranslateX = pointer.x - (pointer.x - currentTranslateX) * scaleRatio;
+	const nextTranslateY = pointer.y - (pointer.y - currentTranslateY) * scaleRatio;
 
 	return {
 		scale: nextScale,
-		x: pointer.x - (pointer.x - viewport.x) * scaleRatio,
-		y: pointer.y - (pointer.y - viewport.y) * scaleRatio
+		x: nextTranslateX - canvasSize.width / 2,
+		y: nextTranslateY - canvasSize.height / 2
 	};
 };
 
@@ -98,6 +112,209 @@ export const getCanvasTransform = (
 	canvasSize: { width: number; height: number }
 ) =>
 	`translate(${canvasSize.width / 2 + viewport.x} ${canvasSize.height / 2 + viewport.y}) scale(${viewport.scale})`;
+
+const getChildrenMap = (nodes: readonly AgentNode[]) => {
+	const childrenMap = new Map<AgentNodeId | null, AgentNode[]>();
+
+	for (const node of nodes) {
+		const siblings = childrenMap.get(node.parentId) ?? [];
+		siblings.push(node);
+		childrenMap.set(node.parentId, siblings);
+	}
+
+	return childrenMap;
+};
+
+export const computeLayoutPlacements = ({
+	nodes,
+	basePlacements,
+	mode
+}: {
+	nodes: readonly AgentNode[];
+	basePlacements: readonly AgentNodePlacement[];
+	mode: LayoutMode;
+}) => {
+	switch (mode) {
+		case 'tree':
+			return computeTreeLayout(nodes);
+		case 'force':
+			return computeForceLayout(nodes, basePlacements);
+		case 'rings':
+		default:
+			return computeRingLayout(nodes);
+	}
+};
+
+const computeRingLayout = (nodes: readonly AgentNode[]) => {
+	const childrenMap = getChildrenMap(nodes);
+	const placements: AgentNodePlacement[] = [];
+	const roots = childrenMap.get(null) ?? [];
+
+	for (const root of roots) {
+		placements.push(createAgentNodePlacement({ nodeId: root.id, x: 0, y: 0 }));
+		placeRingChildren({
+			parentId: root.id,
+			childrenMap,
+			placements,
+			radius: RING_RADIUS_STEP,
+			startAngle: -Math.PI,
+			endAngle: Math.PI
+		});
+	}
+
+	return placements;
+};
+
+const placeRingChildren = ({
+	parentId,
+	childrenMap,
+	placements,
+	radius,
+	startAngle,
+	endAngle
+}: {
+	parentId: AgentNodeId;
+	childrenMap: Map<AgentNodeId | null, AgentNode[]>;
+	placements: AgentNodePlacement[];
+	radius: number;
+	startAngle: number;
+	endAngle: number;
+}) => {
+	const children = childrenMap.get(parentId) ?? [];
+	if (children.length === 0) {
+		return;
+	}
+
+	const angleStep = (endAngle - startAngle) / children.length;
+	for (const [index, child] of children.entries()) {
+		const angle = startAngle + angleStep * index + angleStep / 2;
+		placements.push(
+			createAgentNodePlacement({
+				nodeId: child.id,
+				x: Math.cos(angle) * radius,
+				y: Math.sin(angle) * radius
+			})
+		);
+
+		placeRingChildren({
+			parentId: child.id,
+			childrenMap,
+			placements,
+			radius: radius + RING_RADIUS_STEP,
+			startAngle: angle - angleStep / 2,
+			endAngle: angle + angleStep / 2
+		});
+	}
+};
+
+const computeTreeLayout = (nodes: readonly AgentNode[]) => {
+	const childrenMap = getChildrenMap(nodes);
+	const queue = (childrenMap.get(null) ?? []).map((node) => ({ node, depth: 0 }));
+	const levels: AgentNode[][] = [];
+
+	while (queue.length > 0) {
+		const current = queue.shift();
+		if (!current) {
+			continue;
+		}
+
+		levels[current.depth] ??= [];
+		levels[current.depth].push(current.node);
+
+		for (const child of childrenMap.get(current.node.id) ?? []) {
+			queue.push({ node: child, depth: current.depth + 1 });
+		}
+	}
+
+	return levels.flatMap((levelNodes, depth) => {
+		const totalWidth = (levelNodes.length - 1) * TREE_X_STEP;
+		return levelNodes.map((node, index) =>
+			createAgentNodePlacement({
+				nodeId: node.id,
+				x: index * TREE_X_STEP - totalWidth / 2,
+				y: depth * TREE_Y_STEP
+			})
+		);
+	});
+};
+
+const computeForceLayout = (
+	nodes: readonly AgentNode[],
+	basePlacements: readonly AgentNodePlacement[]
+) => {
+	const baseLookup = getPlacementLookup(basePlacements);
+	type MutablePosition = { x: number; y: number };
+	const positions = new Map(
+		nodes.map((node, index) => {
+			const base = baseLookup.get(node.id);
+			return [
+				node.id,
+				{
+					x: base?.x ?? Math.cos(index) * RING_RADIUS_STEP,
+					y: base?.y ?? Math.sin(index) * RING_RADIUS_STEP
+				} satisfies MutablePosition
+			] as const;
+		})
+	);
+
+	for (let iteration = 0; iteration < 28; iteration += 1) {
+		for (const node of nodes) {
+			const current = positions.get(node.id);
+			if (!current) {
+				continue;
+			}
+
+			let forceX = 0;
+			let forceY = 0;
+
+			for (const otherNode of nodes) {
+				if (otherNode.id === node.id) {
+					continue;
+				}
+
+				const other = positions.get(otherNode.id);
+				if (!other) {
+					continue;
+				}
+
+				const dx = current.x - other.x;
+				const dy = current.y - other.y;
+				const distanceSquared = Math.max(dx * dx + dy * dy, 1);
+				const repulsion = 16000 / distanceSquared;
+				forceX += (dx / Math.sqrt(distanceSquared)) * repulsion;
+				forceY += (dy / Math.sqrt(distanceSquared)) * repulsion;
+			}
+
+			if (node.parentId) {
+				const parent = positions.get(node.parentId);
+				if (parent) {
+					forceX += (parent.x - current.x) * 0.05;
+					forceY += (parent.y - current.y) * 0.05;
+				}
+			}
+
+			current.x += forceX * 0.01;
+			current.y += forceY * 0.01;
+		}
+	}
+
+	for (const node of nodes) {
+		if (node.parentId === null) {
+			const rootPosition = positions.get(node.id);
+			if (rootPosition) {
+				rootPosition.x = 0;
+				rootPosition.y = 0;
+			}
+		}
+	}
+
+	return nodes.map((node) => {
+		const position = positions.get(node.id) ?? { x: 0, y: 0 };
+		return createAgentNodePlacement({ nodeId: node.id, x: position.x, y: position.y });
+	});
+};
+
+export const getRingRadiusForDepth = (depth: number) => depth * RING_RADIUS_STEP;
 
 export const getConnectionPath = (segment: ConnectionSegment) => {
 	const controlX = (segment.x1 + segment.x2) / 2;

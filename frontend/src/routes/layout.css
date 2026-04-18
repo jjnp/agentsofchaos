@@ -76,6 +76,10 @@
 		@apply flex flex-col gap-6 rounded-[1.8rem] p-6;
 	}
 
+	.canvas-page__section {
+		@apply grid gap-4;
+	}
+
 	.canvas-page__eyebrow {
 		@apply text-xs tracking-[0.28em] text-text-muted uppercase;
 	}
