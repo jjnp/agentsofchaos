@@ -18,9 +18,9 @@ apps/pi-rpc/workspace/.env
 .codex/
 .gitconfig
 .npm/
-.pi/
 .profile
 .ssh/
 .tmux.conf
 readme.md
 .cache/
+example/

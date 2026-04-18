@@ -1,5 +1,7 @@
 # agentsofchaos
 
+A novel graph-based interface for coding agents that makes branching, parallel exploration, and mergeable reasoning paths visible and interactive, so users can steer Pi-like agent workflows more directly.
+
 This repo now contains two demos:
 
 - `apps/pi-rpc/` — the earlier single-container, multi-process prototype

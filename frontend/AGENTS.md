@@ -1,3 +1,10 @@
+## Project Context
+
+- See `../README.md` for the short project description.
+- The frontend is for a novel graph-based coding-agent interface.
+- Prefer UI ideas that help users understand and interact with branches, graph structure, parallel work, and merges in Pi-like agent workflows.
+- Project-local slash commands are available via `../.pi/prompts/`, including `/pr` and `/merge`.
+
 ## Project Configuration
 
 - **Language**: TypeScript
@@ -14,6 +21,7 @@
 - Reuse existing components whenever possible.
 - If an existing component could be extended instead of creating a new one, ask when in doubt.
 - Write idiomatic Svelte code.
+- The frontend generally uses Tailwind CSS, but not exclusively; use focused custom CSS when it is the clearer or more maintainable choice.
 - Run linting, checks, and tests before finishing or committing.
 - For staged frontend changes, prefer `bun run staged:verify` for fast validation and `bun run verify:quick` for fast validation plus `svelte-check`.
 - Never commit code with failing tests, linting errors, type errors, or other failing checks.
