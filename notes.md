@@ -222,15 +222,16 @@ It is cleaner for:
 
 ### Current merge flow
 1. source instance checkpoints if dirty
-2. source exports a Git bundle with:
+2. target instance is first snapshotted and forked into a fresh **integration instance**
+3. source exports a Git bundle with:
    - `git bundle create ... --all`
-3. orchestrator reads the bundle from the source container
-4. orchestrator injects the bundle into the target container
-5. target adds the bundle as a remote-like source and fetches it
-6. target runs a real `git merge`
-7. orchestrator reads session data from both sides
-8. orchestrator asks OpenAI to write a merged context summary
-9. summary is written to:
+4. orchestrator reads the bundle from the source container
+5. orchestrator injects the bundle into the integration container
+6. integration instance adds the bundle as a remote-like source and fetches it
+7. integration instance runs a real `git merge`
+8. orchestrator reads session data from both original branches
+9. orchestrator asks OpenAI to write a merged context summary
+10. summary is written to the integration instance at:
    - `/state/meta/merge-context.md`
    - `/state/meta/merge-details.json`
 
@@ -238,6 +239,7 @@ It is cleaner for:
 This already produces:
 - successful merges when branches are non-overlapping
 - real merge conflicts when they overlap
+- non-destructive integration branches because the original target branch is preserved
 
 That is a good sign: the merge primitive is real, not simulated.
 
@@ -502,3 +504,152 @@ Talking points:
 - UI is still prototype-grade
 
 Those are good hackathon caveats and also good next milestones.
+
+---
+
+## Immediate priorities while full design context is still fresh
+
+These are the highest-value next steps to finish before losing chat context:
+
+### 1. Checkpoint-first branching
+Implement stable fork points explicitly.
+
+Desired behavior:
+- when an agent finishes and becomes idle, create a checkpoint
+- checkpoint should include:
+  - git commit SHA
+  - Docker snapshot/image tag
+  - latest pi session path
+  - timestamp
+- forks should default to the latest completed checkpoint
+- mid-run fork requests should resolve to the last checkpoint, not live mutable state
+
+Why this matters:
+- makes branching deterministic
+- simplifies lineage
+- avoids forking half-finished tool runs
+
+### 2. Backend-native lineage
+Lineage is currently mostly UI-side.
+
+Need to make lineage first-class in backend and worker metadata:
+- `instanceId`
+- `parentInstanceId`
+- `rootInstanceId`
+- `snapshotId`
+- `mergedFrom`
+- current git commit
+- latest pi session path
+
+Persist into:
+- `/state/meta/lineage.json`
+
+Why this matters:
+- UI can always reconstruct ancestry
+- merge history becomes durable
+- later branch trees become straightforward
+
+### 3. Integration-instance merge flow + resolver instance
+We already switched merge semantics toward:
+- fork target A into integration instance M
+- merge B into M
+
+Next step:
+- on merge conflict, spawn a dedicated resolver instance from M
+- let pi resolve conflicts there instead of stopping at raw conflict state
+
+Why this matters:
+- keeps A and B pristine
+- makes merge resolution non-destructive
+- is the cleanest branch semantics
+
+### 4. Context merge as a first-class pipeline
+Current merge writes one merged context summary, but we need the actual structure formalized.
+
+Target flow:
+- summarize/compact branch A context
+- summarize/compact branch B context
+- hand both summaries to the integration or resolver instance
+- let pi produce merged context and next-step prompt
+- persist artifacts in `/state/meta/`
+
+Suggested files:
+- `source-summary.md`
+- `target-summary.md`
+- `merge-context.md`
+- `merge-details.json`
+
+Why this matters:
+- code merge without context merge is incomplete
+- this is a key differentiator of the project
+
+### 5. Make agents code-first by default
+We observed that some prompts still get explanation-only responses.
+
+Need to change defaults so that when user says:
+- "build X"
+- "implement Y"
+
+pi should:
+- inspect files
+- edit files
+- commit checkpointed work
+- only explain if blocked or explicitly asked
+
+Possible implementation:
+- stronger default system prompt
+- or a pi extension injecting action-first instructions
+
+Why this matters:
+- makes the product feel like a coding system, not a consultant chat
+
+### 6. Show filesystem action in UI
+Add explicit indicators per instance:
+- tools used in last run
+- filesystem changed yes/no
+- latest git commit SHA
+- clean / dirty / conflicted state
+
+Why this matters:
+- helps users trust that work actually happened
+- makes debugging model behavior much easier
+
+### 7. Tighten the E2E scenarios
+The E2E flow is real, but overlapping branches often touch the same generated files and conflict immediately.
+
+We should create two categories of tests:
+- clean merge scenario
+- intentional conflict scenario
+
+Why this matters:
+- gives us a reliable demo path
+- keeps conflict handling visible without blocking all demos
+
+### 8. Prepare the hackathon demo flow
+Polish the exact flow we want to show live:
+1. create base instance
+2. implement small feature
+3. fork into two variants
+4. make clearly different branch changes
+5. integrate one branch cleanly
+6. show conflict or resolver flow on the second
+7. show lineage and merged context
+
+Why this matters:
+- this is the product story in one sequence
+
+---
+
+## Recommended execution order
+
+If we continue coding after compaction, the best order is:
+
+1. checkpoint-first branching
+2. backend-native lineage
+3. integration + resolver merge flow
+4. structured context merge artifacts
+5. code-first prompting behavior
+6. UI trust signals
+7. polished demo/E2E scripts
+
+This order preserves the architectural intent and de-risks the branch/merge story first.

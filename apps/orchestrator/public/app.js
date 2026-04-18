@@ -79,8 +79,9 @@ function handleActionEvent(payload) {
     fork_complete: `Fork complete: ${payload.sourceSlot + 1} -> ${payload.targetSlot + 1}`,
     merge_prep_start: `Preparing bundle from ${payload.sourceSlot + 1} into ${payload.targetSlot + 1}...`,
     merge_prep_complete: `Bundle prepared: ${payload.sourceSlot + 1} -> ${payload.targetSlot + 1}`,
-    merge_start: `Merging ${payload.sourceSlot + 1} into ${payload.targetSlot + 1}...`,
-    merge_complete: `Merge finished: ${payload.sourceSlot + 1} -> ${payload.targetSlot + 1}`,
+    merge_start: `Creating integration instance for ${payload.sourceSlot + 1} onto ${payload.targetSlot + 1}...`,
+    merge_integration_created: `Integration instance ${payload.integrationSlot + 1} created from ${payload.targetSlot + 1}`,
+    merge_complete: `Merge finished: ${payload.sourceSlot + 1} + ${payload.targetSlot + 1} -> ${payload.integrationSlot + 1}`,
   };
 
   if (payload.type === 'fork_complete') {
@@ -88,9 +89,14 @@ function handleActionEvent(payload) {
     refreshLineage(payload.targetSlot);
   }
 
+  if (payload.type === 'merge_integration_created') {
+    lineage.markFork(payload.targetSlot, payload.integrationSlot);
+    refreshLineage(payload.integrationSlot);
+  }
+
   if (payload.type === 'merge_complete') {
-    lineage.markMerge(payload.sourceSlot, payload.targetSlot);
-    refreshLineage(payload.targetSlot);
+    lineage.markMerge(payload.sourceSlot, payload.integrationSlot);
+    refreshLineage(payload.integrationSlot);
   }
 
   if (statuses[payload.type]) {

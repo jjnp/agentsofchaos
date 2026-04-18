@@ -527,9 +527,24 @@ class BrowserSession {
     const remoteName = `merge_slot_${sourceSlot + 1}`;
 
     this.emit({ type: 'merge_start', sourceSlot, targetSlot, sourceLabel: source.label, targetLabel: target.label });
+
+    const integrationImage = await target.commitSnapshot();
+    const integration = await this.createInstance(integrationImage);
+    const integrationSlot = integration.slot;
+
+    this.emit({
+      type: 'merge_integration_created',
+      sourceSlot,
+      targetSlot,
+      integrationSlot,
+      integrationLabel: integration.label,
+      integrationAgentUuid: integration.agentUuid,
+      image: integrationImage,
+    });
+
     const bundle = await source.exportBundle();
-    await target.importBundle(bundle, remoteName);
-    const mergeResult = await target.mergeFetchedRemote(remoteName, 'main');
+    await integration.importBundle(bundle, remoteName);
+    const mergeResult = await integration.mergeFetchedRemote(remoteName, 'main');
     const [sourceSession, targetSession] = await Promise.all([
       source.getLatestSession().catch(() => null),
       target.getLatestSession().catch(() => null),
@@ -541,9 +556,10 @@ class BrowserSession {
       mergeResult,
     });
 
-    await target.writeMergeContext(mergeContext, {
+    await integration.writeMergeContext(mergeContext, {
       sourceSlot,
       targetSlot,
+      integrationSlot,
       remoteName,
       mergeExitCode: mergeResult.exitCode,
       sourceSessionPath: sourceSession?.path || null,
@@ -552,11 +568,12 @@ class BrowserSession {
       mergeStderr: mergeResult.stderr,
     });
 
-    await target.inspectGitStatus().catch((error) => target.emit({ type: 'git_status_error', message: error.message }));
+    await integration.inspectGitStatus().catch((error) => integration.emit({ type: 'git_status_error', message: error.message }));
     this.emit({
       type: 'merge_complete',
       sourceSlot,
       targetSlot,
+      integrationSlot,
       remoteName,
       mergeExitCode: mergeResult.exitCode,
       mergeContextPath: '/state/meta/merge-context.md',
