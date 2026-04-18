@@ -6,7 +6,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "e2e": "node e2e-smoke.js"
+    "e2e": "node e2e-smoke.js",
+    "battle:e2e": "node battle-e2e.js"
   },
   "dependencies": {
     "dockerode": "^4.0.7",
