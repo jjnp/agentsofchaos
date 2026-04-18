@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Frontend ↔ Orchestrator Integration Plan</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0a0d12;
+        --panel: rgba(16, 20, 27, 0.82);
+        --panel-strong: rgba(22, 28, 37, 0.96);
+        --text: #edf2ff;
+        --muted: #9ca9c4;
+        --border: rgba(133, 162, 214, 0.22);
+        --accent: #73a7ff;
+        --accent-2: #8d7dff;
+        --success: #55d6a1;
+        --warning: #ffcc71;
+        --danger: #ff8a8a;
+        --shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+      }
+
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        min-height: 100%;
+        background:
+          radial-gradient(circle at top left, rgba(115, 167, 255, 0.16), transparent 30%),
+          radial-gradient(circle at top right, rgba(141, 125, 255, 0.12), transparent 28%),
+          linear-gradient(180deg, #0b1017, #07090d 65%);
+        color: var(--text);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      }
+
+      body {
+        padding: 40px 28px 80px;
+      }
+
+      .wrap {
+        max-width: 1320px;
+        margin: 0 auto;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: 1.35fr 0.95fr;
+        gap: 24px;
+        margin-bottom: 24px;
+      }
+
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(16px);
+      }
+
+      .hero-main {
+        padding: 30px 30px 28px;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        gap: 8px;
+        align-items: center;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(115, 167, 255, 0.12);
+        border: 1px solid rgba(115, 167, 255, 0.28);
+        color: #bfd5ff;
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1, h2, h3 { margin: 0; }
+      h1 {
+        margin-top: 16px;
+        font-size: clamp(34px, 5vw, 54px);
+        line-height: 0.98;
+        letter-spacing: -0.04em;
+      }
+      h2 {
+        font-size: 24px;
+        letter-spacing: -0.03em;
+        margin-bottom: 14px;
+      }
+      h3 {
+        font-size: 15px;
+        letter-spacing: -0.02em;
+        margin-bottom: 10px;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .hero-main p {
+        margin-top: 16px;
+        font-size: 16px;
+        max-width: 62ch;
+      }
+
+      .hero-side {
+        padding: 24px;
+        display: grid;
+        gap: 14px;
+        align-content: start;
+      }
+
+      .mini {
+        padding: 16px 18px;
+        border-radius: 18px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.06);
+      }
+
+      .mini strong {
+        display: block;
+        font-size: 14px;
+        margin-bottom: 6px;
+      }
+
+      .grid {
+        display: grid;
+        gap: 24px;
+      }
+
+      .top-grid {
+        grid-template-columns: 1.1fr 0.9fr;
+      }
+
+      .section {
+        padding: 24px;
+      }
+
+      .flow {
+        display: grid;
+        gap: 12px;
+      }
+
+      .flow-row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        align-items: stretch;
+      }
+
+      .node {
+        position: relative;
+        padding: 16px 16px 14px;
+        border-radius: 18px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.025));
+        border: 1px solid rgba(255,255,255,0.08);
+      }
+
+      .node.current { border-color: rgba(255, 204, 113, 0.42); }
+      .node.future { border-color: rgba(115, 167, 255, 0.32); }
+      .node.event { border-color: rgba(85, 214, 161, 0.32); }
+
+      .node .tag {
+        display: inline-block;
+        margin-bottom: 10px;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #d9e5ff;
+      }
+
+      .arrow {
+        text-align: center;
+        color: var(--accent);
+        font-size: 22px;
+        line-height: 1;
+        opacity: 0.9;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+
+      th, td {
+        text-align: left;
+        vertical-align: top;
+        padding: 14px 12px;
+        border-bottom: 1px solid rgba(255,255,255,0.07);
+      }
+
+      th {
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #cad8f6;
+      }
+
+      .pill-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 16px;
+      }
+
+      .pill {
+        padding: 7px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        border: 1px solid rgba(255,255,255,0.09);
+        background: rgba(255,255,255,0.04);
+        color: #dbe6ff;
+      }
+
+      .phase-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .phase {
+        padding: 18px;
+        border-radius: 18px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.07);
+      }
+
+      .phase .num {
+        display: inline-flex;
+        width: 28px;
+        height: 28px;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        background: rgba(115, 167, 255, 0.16);
+        color: #dce9ff;
+        font-size: 13px;
+        margin-bottom: 12px;
+        border: 1px solid rgba(115, 167, 255, 0.28);
+      }
+
+      ul {
+        margin: 10px 0 0;
+        padding-left: 18px;
+        color: var(--muted);
+      }
+
+      li { margin: 7px 0; }
+
+      .legend {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .legend .mini { min-height: 100%; }
+
+      .status-ok { color: var(--success); }
+      .status-watch { color: var(--warning); }
+      .status-risk { color: var(--danger); }
+
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 12px;
+        color: #d9e3fb;
+      }
+
+      .footer {
+        margin-top: 24px;
+        padding: 20px 24px;
+      }
+
+      @media (max-width: 1100px) {
+        .hero,
+        .top-grid,
+        .phase-grid,
+        .legend,
+        .flow-row {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <section class="hero">
+        <div class="card hero-main">
+          <div class="eyebrow">Docs synthesis · first integration map</div>
+          <h1>How the current graph frontend should plug into the orchestrator</h1>
+          <p>
+            The orchestrator already has the right high-level semantics for our current graph UI:
+            global instance state, fork operations, integration-merge creation, artifacts, and a live
+            event stream. The cleanest first step is <strong>not</strong> to replace the graph model,
+            but to keep the existing canvas/domain layer and add a translation layer from orchestrator
+            state + SSE events into that graph.
+          </p>
+          <div class="pill-row">
+            <span class="pill">REST for initial reads + commands</span>
+            <span class="pill">SSE as the source of truth for live updates</span>
+            <span class="pill">Canvas placements remain frontend-owned</span>
+            <span class="pill">Fork/merge mocks become orchestrator-backed actions</span>
+          </div>
+        </div>
+        <div class="card hero-side">
+          <div class="mini">
+            <strong>Best immediate fit</strong>
+            <p>Our current merge visualization already matches orchestrator semantics surprisingly well: merge creates a new integration node rather than mutating the target in place.</p>
+          </div>
+          <div class="mini">
+            <strong>Main translation gap</strong>
+            <p>Backend identity is slot/session/agentUuid oriented. Frontend identity is UUID-only graph nodes. We should keep a frontend UUID and attach backend metadata, not overload slot as node id.</p>
+          </div>
+          <div class="mini">
+            <strong>Critical real-time rule</strong>
+            <p>Prompt completion must come from SSE <span class="mono">pi_event.agent_end</span>, not optimistic local state.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="grid top-grid">
+        <div class="card section">
+          <h2>System shape</h2>
+          <div class="flow">
+            <div class="flow-row">
+              <div class="node current">
+                <div class="tag">Current frontend</div>
+                <strong>Graph canvas + local demo state</strong>
+                <p>Page-local nodes, placements, mock fork(), mock merge(), left prompt panel, right layout controls.</p>
+              </div>
+              <div class="arrow">→</div>
+              <div class="node future">
+                <div class="tag">Next layer</div>
+                <strong>Frontend orchestrator adapter</strong>
+                <p>Typed REST client, SSE subscriber, event reducer, graph mapper, artifact hydrator.</p>
+              </div>
+            </div>
+            <div class="flow-row">
+              <div class="node future">
+                <div class="tag">Backend</div>
+                <strong>Orchestrator REST</strong>
+                <p><span class="mono">/api/state</span>, <span class="mono">/api/instances</span>, prompts, fork, merge, artifacts.</p>
+              </div>
+              <div class="arrow">↔</div>
+              <div class="node event">
+                <div class="tag">Realtime</div>
+                <strong>SSE event stream</strong>
+                <p><span class="mono">grid_ready</span>, <span class="mono">instance_created</span>, <span class="mono">fork_complete</span>, <span class="mono">merge_complete</span>, <span class="mono">pi_event</span>.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card section">
+          <h2>Recommended first principle</h2>
+          <div class="mini" style="background: rgba(115,167,255,0.06); border-color: rgba(115,167,255,0.18);">
+            <strong>Preserve the graph domain. Add backend metadata beside it.</strong>
+            <p>
+              The graph is the product surface. The orchestrator is the execution backend. So the
+              frontend should continue to render <span class="mono">AgentNode</span> and
+              <span class="mono">AgentNodePlacement</span>, but enrich each node with a backend payload
+              like slot / label / agentUuid / sessionId / artifact availability.
+            </p>
+          </div>
+          <ul>
+            <li><span class="status-ok">Good fit:</span> current parent edge = fork lineage.</li>
+            <li><span class="status-ok">Good fit:</span> current mergedNodes edge = source → integration merge edge.</li>
+            <li><span class="status-watch">Watch:</span> current status enum is only <span class="mono">running | completed</span>; backend has richer lifecycle.</li>
+            <li><span class="status-watch">Watch:</span> slots are global/process-local, so reconnect logic must re-bootstrap from <span class="mono">GET /api/state</span>.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="card section" style="margin-top:24px;">
+        <h2>Concrete mapping from orchestrator model to current graph model</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Frontend concept</th>
+              <th>Current implementation</th>
+              <th>Orchestrator source</th>
+              <th>First integration idea</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Node identity</strong></td>
+              <td><span class="mono">AgentNode.id</span> is UUID-only</td>
+              <td>slot, sessionId, agentUuid</td>
+              <td>Generate/stabilize a frontend UUID and store backend metadata separately so strict typing stays clean.</td>
+            </tr>
+            <tr>
+              <td><strong>Parent relationship</strong></td>
+              <td><span class="mono">parentId</span></td>
+              <td><span class="mono">fork_complete</span>, fork responses, fork-point artifact</td>
+              <td>When a fork produces target slot N from source slot M, create node N with <span class="mono">parentId = node(M)</span>.</td>
+            </tr>
+            <tr>
+              <td><strong>Merged nodes</strong></td>
+              <td><span class="mono">mergedNodes: AgentNodeId[]</span></td>
+              <td><span class="mono">merge_integration_created</span> / <span class="mono">merge_complete</span>, <span class="mono">POST /api/merge</span></td>
+              <td>Create a new integration node as a child of the target node; set <span class="mono">mergedNodes = [sourceNodeId]</span>.</td>
+            </tr>
+            <tr>
+              <td><strong>Status</strong></td>
+              <td><span class="mono">running | completed</span></td>
+              <td>instance status + prompt lifecycle events</td>
+              <td>Short term: treat “prompt in flight” as <span class="mono">running</span>, otherwise <span class="mono">completed</span>. Later add richer statuses.</td>
+            </tr>
+            <tr>
+              <td><strong>Context usage</strong></td>
+              <td><span class="mono">details.contextUsage</span></td>
+              <td>fork-point artifact, future SSE-derived counters, merge artifacts</td>
+              <td>Start by hydrating from fork-point artifact when present; for live nodes, allow unknown/zero until better telemetry exists.</td>
+            </tr>
+            <tr>
+              <td><strong>Prompt composer</strong></td>
+              <td>Calls local <span class="mono">fork()</span> mock</td>
+              <td><span class="mono">POST /api/instances/:slot/prompt</span></td>
+              <td>Prompt should target the selected node’s backend slot and keep the same left-panel UX.</td>
+            </tr>
+            <tr>
+              <td><strong>Fork action</strong></td>
+              <td>Mock child creation</td>
+              <td><span class="mono">POST /api/instances/:slot/fork</span></td>
+              <td>Replace local child synthesis with server-created instance + SSE-confirmed lineage.</td>
+            </tr>
+            <tr>
+              <td><strong>Merge action</strong></td>
+              <td>Mock integration node creation</td>
+              <td><span class="mono">POST /api/merge</span></td>
+              <td>Keep the exact UI metaphor; swap in backend merge call and wait for integration events.</td>
+            </tr>
+            <tr>
+              <td><strong>Node placement</strong></td>
+              <td>Client-only placements/layout strategies</td>
+              <td>Not provided by backend</td>
+              <td>Remain entirely frontend-owned. Only logical graph data should come from the orchestrator.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="card section" style="margin-top:24px;">
+        <h2>Event-driven behavior map</h2>
+        <div class="legend">
+          <div class="mini">
+            <strong>Bootstrap</strong>
+            <ul>
+              <li><span class="mono">GET /api/state</span></li>
+              <li>Open SSE</li>
+              <li>Normalize existing instances into graph nodes</li>
+            </ul>
+          </div>
+          <div class="mini">
+            <strong>Prompt run</strong>
+            <ul>
+              <li>POST prompt</li>
+              <li>Mark node running</li>
+              <li>Stream terminal deltas into left panel</li>
+              <li>Finish on <span class="mono">agent_end</span></li>
+            </ul>
+          </div>
+          <div class="mini">
+            <strong>Fork</strong>
+            <ul>
+              <li>POST fork from selected node</li>
+              <li>Wait for instance + fork events</li>
+              <li>Create child node from returned target slot</li>
+            </ul>
+          </div>
+          <div class="mini">
+            <strong>Merge</strong>
+            <ul>
+              <li>Existing drag UI stays</li>
+              <li>POST merge(source,target)</li>
+              <li>Create integration child on merge event</li>
+              <li>Render dashed merged edge from source</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="card section" style="margin-top:24px;">
+        <h2>Step-by-step integration plan</h2>
+        <div class="phase-grid">
+          <div class="phase">
+            <div class="num">1</div>
+            <h3>Introduce backend-aware graph types</h3>
+            <p>Add a frontend-only extension beside <span class="mono">AgentNode</span>, e.g. <span class="mono">AgentNodeRuntime</span> or <span class="mono">backend</span> metadata.</p>
+            <ul>
+              <li>slot</li>
+              <li>label</li>
+              <li>agentUuid</li>
+              <li>sessionId</li>
+              <li>artifact flags</li>
+            </ul>
+          </div>
+          <div class="phase">
+            <div class="num">2</div>
+            <h3>Build a small orchestrator client layer</h3>
+            <p>Create one thin module for REST and one for SSE, both typed from the documented payload shapes.</p>
+            <ul>
+              <li>getState()</li>
+              <li>createInstance()</li>
+              <li>promptInstance()</li>
+              <li>forkInstance()</li>
+              <li>mergeInstances()</li>
+            </ul>
+          </div>
+          <div class="phase">
+            <div class="num">3</div>
+            <h3>Add a reducer that turns backend state into graph state</h3>
+            <p>This is the key seam: server payloads become our canvas model, without leaking transport concerns into Svelte components.</p>
+            <ul>
+              <li>normalize initial state</li>
+              <li>upsert nodes by backend key</li>
+              <li>derive parentId from fork lineage</li>
+            </ul>
+          </div>
+          <div class="phase">
+            <div class="num">4</div>
+            <h3>Replace prompt mock first</h3>
+            <p>Smallest real backend win. Keep selection, left panel, and running spinner behavior; only the action changes.</p>
+            <ul>
+              <li>send prompt to selected slot</li>
+              <li>stream output into node view</li>
+              <li>complete on SSE</li>
+            </ul>
+          </div>
+          <div class="phase">
+            <div class="num">5</div>
+            <h3>Replace fork creation</h3>
+            <p>Hook current “create child” UX to real fork semantics and artifact hydration.</p>
+            <ul>
+              <li>use server-created target slot</li>
+              <li>fetch fork-point artifact</li>
+              <li>seed details context usage</li>
+            </ul>
+          </div>
+          <div class="phase">
+            <div class="num">6</div>
+            <h3>Replace merge creation</h3>
+            <p>The existing UI almost exactly matches backend semantics. This should be a natural swap after fork is working.</p>
+            <ul>
+              <li>drag source onto target</li>
+              <li>call <span class="mono">POST /api/merge</span></li>
+              <li>create integration child of target</li>
+              <li>show merged edge from source</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="grid top-grid" style="margin-top:24px;">
+        <div class="card section">
+          <h2>What can stay exactly as-is</h2>
+          <ul>
+            <li>Canvas rendering, pan/zoom, layout modes, slide-over panels.</li>
+            <li>Parent edges and merged edges as visual primitives.</li>
+            <li>Node-focused left panel as the execution detail surface.</li>
+            <li>Placements and layout strategies staying fully client-side.</li>
+            <li>Selection as the main routing key for user actions.</li>
+          </ul>
+        </div>
+        <div class="card section">
+          <h2>What will likely need a small model evolution</h2>
+          <ul>
+            <li><span class="status-watch">Status model:</span> eventually richer than <span class="mono">running/completed</span>.</li>
+            <li><span class="status-watch">Identity model:</span> node UUID plus backend identity tuple.</li>
+            <li><span class="status-watch">Artifacts:</span> per-node loading/error state for fork-point / merge-context / merge-details.</li>
+            <li><span class="status-risk">Reconnect correctness:</span> SSE is buffered, but frontend should still re-bootstrap from <span class="mono">/api/state</span>.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="card footer">
+        <h2>Suggested first implementation slice</h2>
+        <p>
+          <strong>Slice 1:</strong> keep the existing canvas page, replace demo fixtures with
+          <span class="mono">GET /api/state</span> + SSE bootstrapping, and wire only prompt execution
+          for the selected node. That gives us a real backend-backed graph without yet needing to solve
+          every lineage edge case. After that, fork and merge become incremental additions on top of the
+          same reducer.
+        </p>
+      </section>
+    </div>
+  </body>
+</html>
