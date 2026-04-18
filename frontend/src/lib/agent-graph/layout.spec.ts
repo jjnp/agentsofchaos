@@ -13,19 +13,22 @@ import { createAgentNode, createAgentNodePlacement } from './types';
 
 const rootNode = createAgentNode({
 	id: '550e8400-e29b-41d4-a716-446655440000',
-	name: 'Root'
+	name: 'Root',
+	status: 'running'
 });
 
 const childNode = createAgentNode({
 	id: '550e8400-e29b-41d4-a716-446655440001',
 	name: 'Child',
-	parentId: rootNode.id
+	parentId: rootNode.id,
+	status: 'completed'
 });
 
 const grandchildNode = createAgentNode({
 	id: '550e8400-e29b-41d4-a716-446655440002',
 	name: 'Grandchild',
-	parentId: childNode.id
+	parentId: childNode.id,
+	status: 'running'
 });
 
 const placements = [

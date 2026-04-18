@@ -24,6 +24,7 @@
 		selectedNodeId: initialSelectedNodeId = null,
 		activeLayoutMode = $bindable<LayoutMode>('rings'),
 		showNodeDetailsForAll = true,
+		onSelectedNodeChange,
 		minScale = 0.5,
 		maxScale = 2.2,
 		class: className = ''
@@ -33,6 +34,7 @@
 		selectedNodeId?: AgentNodeId | null;
 		activeLayoutMode?: LayoutMode;
 		showNodeDetailsForAll?: boolean;
+		onSelectedNodeChange?: (nodeId: AgentNodeId | null) => void;
 		minScale?: number;
 		maxScale?: number;
 		class?: string;
@@ -99,6 +101,10 @@
 
 	$effect(() => {
 		visibleNodeDetailsIds = showNodeDetailsForAll ? nodes.map((node) => node.id) : [];
+	});
+
+	$effect(() => {
+		onSelectedNodeChange?.(internalSelectedNodeId);
 	});
 
 	const placementLookup = $derived(
