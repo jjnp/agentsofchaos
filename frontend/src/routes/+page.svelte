@@ -1,23 +1,33 @@
 <script lang="ts">
 	import { computeLayoutPlacements } from '$lib/agent-graph/layout';
+	import { fork, forkPromptSchema } from '$lib/agent-graph/api';
 	import { demoAgentNodePlacements, demoAgentNodes } from '$lib/agent-graph/fixtures';
 	import AgentCanvas from '$lib/components/agent-graph/AgentCanvas.svelte';
 	import AgentNodeViewSidebar from '$lib/components/agent-graph/AgentNodeViewSidebar.svelte';
 	import AgentCanvasSidebar from '$lib/components/agent-graph/AgentCanvasSidebar.svelte';
 	import type { ControlOption } from '$lib/components/primitives/types';
-	import { layoutModes, type AgentNodeId, type LayoutMode } from '$lib/agent-graph/types';
-
-	const nodes = demoAgentNodes;
-	const basePlacements = demoAgentNodePlacements;
+	import {
+		createAgentNodePlacement,
+		layoutModes,
+		type AgentNode,
+		type AgentNodeId,
+		type AgentNodePlacement,
+		type LayoutMode
+	} from '$lib/agent-graph/types';
+	import { safeParse } from 'valibot';
 
 	const layoutModeOptions: readonly ControlOption[] = layoutModes.map((mode) => ({
 		value: mode,
 		label: mode === 'rings' ? 'Concentric rings' : mode === 'tree' ? 'Tree' : 'Force'
 	}));
 
+	const initialSelectedNodeId = demoAgentNodes[4]?.id ?? demoAgentNodes[0]?.id ?? null;
+
+	let nodes = $state<readonly AgentNode[]>([...demoAgentNodes]);
+	let basePlacements = $state<readonly AgentNodePlacement[]>([...demoAgentNodePlacements]);
 	let activeLayoutMode = $state<LayoutMode>('rings');
 	let showNodeDetailsForAll = $state(true);
-	let selectedNodeId = $state<AgentNodeId | null>(nodes[4]?.id ?? nodes[0]?.id ?? null);
+	let selectedNodeId = $state<AgentNodeId | null>(initialSelectedNodeId);
 	let nodeViewPrompt = $state('');
 	const isNodeViewOpen = true;
 	let isSidebarOpen = $state(true);
@@ -30,6 +40,45 @@
 		})
 	);
 	const selectedNode = $derived(nodes.find((node) => node.id === selectedNodeId) ?? null);
+
+	const getForkPlacement = (
+		parentNodeId: AgentNodeId,
+		childNodeId: AgentNodeId,
+		currentPlacements: readonly AgentNodePlacement[],
+		allNodes: readonly AgentNode[]
+	) => {
+		const parentPlacement =
+			currentPlacements.find((placement) => placement.nodeId === parentNodeId) ??
+			basePlacements.find((placement) => placement.nodeId === parentNodeId) ??
+			createAgentNodePlacement({ nodeId: parentNodeId, x: 0, y: 0 });
+		const siblingCount = allNodes.filter((node) => node.parentId === parentNodeId).length;
+		const siblingOffset = siblingCount * 32;
+
+		return createAgentNodePlacement({
+			nodeId: childNodeId,
+			x: parentPlacement.x + 180,
+			y: parentPlacement.y + 108 + siblingOffset
+		});
+	};
+
+	const handleForkSubmit = () => {
+		if (!selectedNode) {
+			return;
+		}
+
+		const parsedPrompt = safeParse(forkPromptSchema, nodeViewPrompt);
+		if (!parsedPrompt.success) {
+			return;
+		}
+
+		const nextNode = fork(selectedNode, parsedPrompt.output);
+		const nextPlacement = getForkPlacement(selectedNode.id, nextNode.id, activePlacements, nodes);
+
+		nodes = [...nodes, nextNode];
+		basePlacements = [...basePlacements, nextPlacement];
+		selectedNodeId = nextNode.id;
+		nodeViewPrompt = '';
+	};
 </script>
 
 <svelte:head>
@@ -38,7 +87,12 @@
 </svelte:head>
 
 <div class="canvas-page">
-	<AgentNodeViewSidebar {selectedNode} isOpen={isNodeViewOpen} bind:prompt={nodeViewPrompt} />
+	<AgentNodeViewSidebar
+		{selectedNode}
+		isOpen={isNodeViewOpen}
+		bind:prompt={nodeViewPrompt}
+		onSubmit={handleForkSubmit}
+	/>
 
 	<AgentCanvas
 		bind:activeLayoutMode

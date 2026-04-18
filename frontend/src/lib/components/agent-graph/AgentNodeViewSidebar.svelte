@@ -4,11 +4,13 @@
 	let {
 		selectedNode = null,
 		isOpen = true,
-		prompt = $bindable('')
+		prompt = $bindable(''),
+		onSubmit
 	}: {
 		selectedNode?: AgentNode | null;
 		isOpen?: boolean;
 		prompt?: string;
+		onSubmit?: () => void;
 	} = $props();
 
 	const terminalLines = [
@@ -23,6 +25,16 @@
 		'consequat id porta vitae, pretium non velit, sed tempor risus.',
 		'mauris placerat erat vel magna fermentum, non ultrices nibh feugiat.'
 	];
+
+	const isSubmitDisabled = $derived(!selectedNode || prompt.trim().length === 0);
+
+	const handleSubmit = () => {
+		if (isSubmitDisabled) {
+			return;
+		}
+
+		onSubmit?.();
+	};
 </script>
 
 {#if isOpen}
@@ -51,7 +63,23 @@
 				bind:value={prompt}
 				rows="4"
 				placeholder="Write the next instruction for this node…"
+				onkeydown={(event) => {
+					if (event.key === 'Enter' && !event.shiftKey) {
+						event.preventDefault();
+						handleSubmit();
+					}
+				}}
 			></textarea>
+			<div class="node-view-sidebar__composer-actions">
+				<button
+					type="button"
+					class="node-view-sidebar__submit"
+					disabled={isSubmitDisabled}
+					onclick={handleSubmit}
+				>
+					Send
+				</button>
+			</div>
 		</div>
 	</aside>
 {/if}
@@ -141,6 +169,38 @@
 
 	.node-view-sidebar__textarea::placeholder {
 		color: var(--color-text-muted);
+	}
+
+	.node-view-sidebar__composer-actions {
+		display: flex;
+		justify-content: flex-end;
+	}
+
+	.node-view-sidebar__submit {
+		border: 1px solid color-mix(in srgb, var(--color-primary) 48%, var(--color-border));
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--color-primary) 24%, rgb(18 19 15 / 1));
+		padding: 0.65rem 1rem;
+		font-size: 0.74rem;
+		font-weight: 600;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--color-text);
+		cursor: pointer;
+		transition:
+			transform 180ms ease,
+			filter 180ms ease,
+			opacity 180ms ease;
+	}
+
+	.node-view-sidebar__submit:hover:not(:disabled) {
+		transform: translateY(-1px);
+		filter: brightness(1.06);
+	}
+
+	.node-view-sidebar__submit:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
 	}
 
 	@media (max-width: 900px) {

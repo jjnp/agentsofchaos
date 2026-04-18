@@ -19,7 +19,18 @@ describe('agent graph api scaffold', () => {
 		});
 
 		expect(merge(baseNode, incomingNode)).toBe(incomingNode);
-		expect(fork(baseNode, 'Investigate auth edge cases')).toBe(baseNode);
+
+		const forkedNode = fork(baseNode, 'Investigate auth edge cases');
+
+		expect(forkedNode).toMatchObject({
+			name: 'Investigate auth edge cases',
+			parentId: baseNode.id,
+			status: 'running',
+			details: {
+				contextUsage: { tokens: 0, percentage: 0 }
+			}
+		});
+		expect(forkedNode.id).not.toBe(baseNode.id);
 	});
 
 	it('requires a non-empty fork prompt', () => {
