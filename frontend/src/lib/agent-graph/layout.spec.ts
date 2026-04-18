@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
 	clampScale,
 	computeLayoutPlacements,
+	getCanvasPointFromScreen,
 	getCanvasTransform,
 	getConnectionSegments,
 	getMaxNodeDepth,
+	getMergePreviewPath,
 	getNodeDepth,
 	getViewportAfterZoom
 } from './layout';
@@ -80,6 +82,20 @@ describe('agent graph layout helpers', () => {
 		expect(getCanvasTransform({ x: 40, y: -20, scale: 1.5 }, { width: 900, height: 600 })).toBe(
 			'translate(490 280) scale(1.5)'
 		);
+	});
+
+	it('maps screen coordinates back into canvas world coordinates', () => {
+		expect(
+			getCanvasPointFromScreen({
+				pointer: { x: 520, y: 340 },
+				viewport: { x: 40, y: -20, scale: 1.5 },
+				canvasSize: { width: 900, height: 600 }
+			})
+		).toEqual({ x: 20, y: 40 });
+	});
+
+	it('builds a curved merge preview path between two points', () => {
+		expect(getMergePreviewPath({ x: 0, y: 0 }, { x: 120, y: 0 })).toBe('M 0 0 Q 60 28 120 0');
 	});
 
 	it('computes distinct placements for each layout mode', () => {

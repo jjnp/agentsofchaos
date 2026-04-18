@@ -7,6 +7,11 @@ export type CanvasViewport = Readonly<{
 	scale: number;
 }>;
 
+export type CanvasPoint = Readonly<{
+	x: number;
+	y: number;
+}>;
+
 export type ConnectionSegment = Readonly<{
 	childId: AgentNodeId;
 	parentId: AgentNodeId;
@@ -113,6 +118,19 @@ export const getCanvasTransform = (
 	canvasSize: { width: number; height: number }
 ) =>
 	`translate(${canvasSize.width / 2 + viewport.x} ${canvasSize.height / 2 + viewport.y}) scale(${viewport.scale})`;
+
+export const getCanvasPointFromScreen = ({
+	pointer,
+	viewport,
+	canvasSize
+}: {
+	pointer: CanvasPoint;
+	viewport: CanvasViewport;
+	canvasSize: Readonly<{ width: number; height: number }>;
+}): CanvasPoint => ({
+	x: (pointer.x - canvasSize.width / 2 - viewport.x) / viewport.scale,
+	y: (pointer.y - canvasSize.height / 2 - viewport.y) / viewport.scale
+});
 
 const getChildrenMap = (nodes: readonly AgentNode[]) => {
 	const childrenMap = new Map<AgentNodeId | null, AgentNode[]>();
@@ -324,4 +342,19 @@ export const getConnectionPath = (segment: ConnectionSegment) => {
 	const controlY = (segment.y1 + segment.y2) / 2;
 
 	return `M ${segment.x1} ${segment.y1} Q ${controlX} ${controlY} ${segment.x2} ${segment.y2}`;
+};
+
+export const getMergePreviewPath = (start: CanvasPoint, end: CanvasPoint) => {
+	const dx = end.x - start.x;
+	const dy = end.y - start.y;
+	const distance = Math.hypot(dx, dy);
+	const midpointX = (start.x + end.x) / 2;
+	const midpointY = (start.y + end.y) / 2;
+	const normalX = distance === 0 ? 0 : -dy / distance;
+	const normalY = distance === 0 ? -1 : dx / distance;
+	const curveStrength = Math.min(Math.max(distance * 0.18, 28), 72);
+	const controlX = midpointX + normalX * curveStrength;
+	const controlY = midpointY + normalY * curveStrength;
+
+	return `M ${start.x} ${start.y} Q ${controlX} ${controlY} ${end.x} ${end.y}`;
 };

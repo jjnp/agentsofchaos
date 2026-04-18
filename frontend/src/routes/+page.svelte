@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { computeLayoutPlacements } from '$lib/agent-graph/layout';
-	import { fork, forkPromptSchema } from '$lib/agent-graph/api';
+	import { fork, forkPromptSchema, merge } from '$lib/agent-graph/api';
 	import { demoAgentNodePlacements, demoAgentNodes } from '$lib/agent-graph/fixtures';
 	import AgentCanvas from '$lib/components/agent-graph/AgentCanvas.svelte';
 	import AgentNodeViewSidebar from '$lib/components/agent-graph/AgentNodeViewSidebar.svelte';
@@ -79,6 +79,17 @@
 		selectedNodeId = nextNode.id;
 		nodeViewPrompt = '';
 	};
+
+	const handleMerge = (sourceNodeId: AgentNodeId, targetNodeId: AgentNodeId) => {
+		const sourceNode = nodes.find((node) => node.id === sourceNodeId);
+		const targetNode = nodes.find((node) => node.id === targetNodeId);
+		if (!sourceNode || !targetNode) {
+			return;
+		}
+
+		void merge(targetNode, sourceNode);
+		window.alert(`Merge received\nSource: ${sourceNode.name}\nTarget: ${targetNode.name}`);
+	};
 </script>
 
 <svelte:head>
@@ -100,6 +111,7 @@
 		onSelectedNodeChange={(nodeId) => {
 			selectedNodeId = nodeId;
 		}}
+		onMerge={handleMerge}
 		{showNodeDetailsForAll}
 		{nodes}
 		placements={activePlacements}
