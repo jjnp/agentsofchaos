@@ -28,9 +28,7 @@
 	const labelOffsetX = $derived(isRootNode ? 0 : isLeftSide ? -24 : 24);
 	const dotRadius = $derived(isRootNode ? 16.5 : 13.5);
 	const ringRadius = $derived(isRootNode ? 27 : 22.5);
-	const spinnerRadius = $derived(isRootNode ? 6 : 5);
-	const spinnerOffsetX = $derived(isLeftSide ? dotRadius + 12 : -(dotRadius + 12));
-	const spinnerOffsetY = -1;
+	const spinnerRadius = $derived(isRootNode ? 6.2 : 5.2);
 	const showNodeDetails = $derived(graphState.isNodeDetailsVisible(node.id));
 	const showDetails = $derived(node.details !== null && showNodeDetails);
 	const showTitleLabel = $derived(!showNodeDetails);
@@ -105,11 +103,7 @@
 	<circle class="agent-node__hit" r={ringRadius + 8}></circle>
 	<circle class="agent-node__dot" r={dotRadius}></circle>
 	{#if isRunning}
-		<g
-			transform={`translate(${spinnerOffsetX} ${spinnerOffsetY})`}
-			data-node-spinner-for={node.id}
-			aria-hidden="true"
-		>
+		<g data-node-spinner-for={node.id} aria-hidden="true">
 			<g class="agent-node__spinner">
 				<circle class="agent-node__spinner-track" r={spinnerRadius}></circle>
 				<circle
@@ -232,7 +226,7 @@
 	.agent-node__spinner-track,
 	.agent-node__spinner-arc {
 		fill: none;
-		stroke: var(--color-primary-accent);
+		stroke: var(--node-spinner-color, var(--color-primary-accent));
 		stroke-width: 1.6;
 		stroke-linecap: round;
 	}
@@ -249,10 +243,15 @@
 	}
 
 	.agent-node__spinner-head {
-		fill: var(--color-primary-accent);
+		fill: var(--node-spinner-color, var(--color-primary-accent));
 		filter: drop-shadow(
 			0 0 0.35rem color-mix(in srgb, var(--color-primary-accent) 34%, transparent)
 		);
+	}
+
+	.agent-node.selected,
+	.agent-node:focus-visible {
+		--node-spinner-color: var(--color-canvas);
 	}
 
 	.agent-node__label {
