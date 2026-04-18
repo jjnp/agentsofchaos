@@ -8,11 +8,14 @@ export { default as Input } from './components/primitives/Input.svelte';
 export { default as AutocompleteInput } from './components/primitives/AutocompleteInput.svelte';
 
 export { demoAgentNodePlacements, demoAgentNodes } from './agent-graph/fixtures';
+export { fork, forkPromptSchema, merge, type ForkPrompt } from './agent-graph/api';
 export { createAgentGraphState, type AgentGraphState } from './agent-graph/state.svelte';
 export {
 	agentNodePlacementSchema,
 	agentNodeDetailsSchema,
 	agentNodeContextUsageSchema,
+	agentNodeStatuses,
+	agentNodeStatusSchema,
 	agentNodeSchema,
 	createAgentNode,
 	createAgentNodeId,
@@ -20,6 +23,7 @@ export {
 	isAgentNodeId,
 	type AgentNodeContextUsage,
 	type AgentNodeDetails,
+	type AgentNodeStatus,
 	type AgentNode,
 	type AgentNodeId,
 	type AgentNodePlacement

@@ -1,6 +1,8 @@
 import * as v from 'valibot';
 
 export type AgentNodeId = string & { readonly __brand: 'AgentNodeId' };
+export const agentNodeStatuses = ['running', 'completed'] as const;
+export type AgentNodeStatus = (typeof agentNodeStatuses)[number];
 
 export type AgentNodeContextUsage = Readonly<{
 	tokens: number;
@@ -15,6 +17,7 @@ export type AgentNode = Readonly<{
 	id: AgentNodeId;
 	name: string;
 	parentId: AgentNodeId | null;
+	status: AgentNodeStatus;
 	details: AgentNodeDetails | null;
 }>;
 
@@ -28,6 +31,7 @@ export const layoutModes = ['rings', 'tree', 'force'] as const;
 export type LayoutMode = (typeof layoutModes)[number];
 
 export const agentNodeIdSchema = v.pipe(v.string(), v.uuid());
+export const agentNodeStatusSchema = v.picklist(agentNodeStatuses);
 
 export const agentNodeContextUsageSchema = v.object({
 	tokens: v.pipe(v.number(), v.integer(), v.minValue(0)),
@@ -42,6 +46,7 @@ export const agentNodeSchema = v.object({
 	id: agentNodeIdSchema,
 	name: v.pipe(v.string(), v.minLength(1)),
 	parentId: v.nullable(agentNodeIdSchema),
+	status: agentNodeStatusSchema,
 	details: v.nullable(agentNodeDetailsSchema)
 });
 
@@ -66,6 +71,7 @@ export const createAgentNode = (input: {
 	id?: string;
 	name: string;
 	parentId?: string | null;
+	status: AgentNodeStatus;
 	details?: {
 		contextUsage: {
 			tokens: number;
@@ -77,6 +83,7 @@ export const createAgentNode = (input: {
 		id: input.id ?? createAgentNodeId(),
 		name: input.name,
 		parentId: input.parentId ?? null,
+		status: input.status,
 		details: input.details
 			? {
 					contextUsage: input.details.contextUsage
@@ -88,6 +95,7 @@ export const createAgentNode = (input: {
 		...parsedNode,
 		id: parsedNode.id as AgentNodeId,
 		parentId: parsedNode.parentId as AgentNodeId | null,
+		status: parsedNode.status as AgentNodeStatus,
 		details: parsedNode.details as AgentNodeDetails | null
 	};
 };

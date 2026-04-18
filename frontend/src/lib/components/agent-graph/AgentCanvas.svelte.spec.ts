@@ -9,6 +9,7 @@ describe('AgentCanvas', () => {
 		const rootNode = createAgentNode({
 			id: '550e8400-e29b-41d4-a716-446655440000',
 			name: 'Root node',
+			status: 'running',
 			details: {
 				contextUsage: { tokens: 1400, percentage: 22 }
 			}
@@ -17,6 +18,7 @@ describe('AgentCanvas', () => {
 			id: '550e8400-e29b-41d4-a716-446655440001',
 			name: 'Child node',
 			parentId: rootNode.id,
+			status: 'completed',
 			details: {
 				contextUsage: { tokens: 640, percentage: 10 }
 			}

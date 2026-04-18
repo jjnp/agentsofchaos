@@ -5,6 +5,7 @@ import {
 	agentNodeDetailsSchema,
 	agentNodePlacementSchema,
 	agentNodeSchema,
+	agentNodeStatusSchema,
 	createAgentNode,
 	createAgentNodePlacement,
 	isAgentNodeId,
@@ -16,6 +17,7 @@ describe('agent graph schemas', () => {
 		const node = createAgentNode({
 			id: '550e8400-e29b-41d4-a716-446655440000',
 			name: 'Root node',
+			status: 'running',
 			details: {
 				contextUsage: { tokens: 1024, percentage: 16 }
 			}
@@ -23,6 +25,7 @@ describe('agent graph schemas', () => {
 
 		expect(safeParse(agentNodeSchema, node).success).toBe(true);
 		expect(safeParse(agentNodeDetailsSchema, node.details).success).toBe(true);
+		expect(safeParse(agentNodeStatusSchema, node.status).success).toBe(true);
 		expect(isAgentNodeId(node.id)).toBe(true);
 	});
 
@@ -40,14 +43,18 @@ describe('agent graph schemas', () => {
 	});
 
 	it('rejects invalid node ids', () => {
-		const invalidNode = {
+		const invalidNode: {
+			id: string;
+			name: AgentNode['name'];
+			parentId: string | null;
+			status: string;
+			details: AgentNode['details'];
+		} = {
 			id: 'not-a-uuid',
 			name: 'Broken node',
 			parentId: null,
+			status: 'broken',
 			details: null
-		} satisfies Omit<AgentNode, 'id' | 'parentId'> & {
-			id: string;
-			parentId: string | null;
 		};
 
 		expect(safeParse(agentNodeSchema, invalidNode).success).toBe(false);
