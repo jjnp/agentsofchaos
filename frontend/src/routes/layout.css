@@ -58,4 +58,8 @@
 	.section-copy {
 		@apply max-w-2xl text-sm leading-7 text-text-muted md:text-base;
 	}
+
+	.canvas-page {
+		@apply relative min-h-screen overflow-hidden;
+	}
 }
