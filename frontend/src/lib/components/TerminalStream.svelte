@@ -276,11 +276,36 @@
 		sendMessage({ type: 'resize', cols: terminal.cols, rows: terminal.rows });
 	}
 
+	function writeToTerminal(data: string | Uint8Array) {
+		if (!terminal) return;
+
+		terminal.write(data, () => {
+			terminal?.scrollToBottom();
+		});
+	}
+
+	function clipLineWidth(text: string, maxColumns: number) {
+		if (maxColumns <= 0) return text;
+
+		return text
+			.split('\n')
+			.map((line) => (line.length > maxColumns ? line.slice(0, maxColumns) : line))
+			.join('\n');
+	}
+
+	function getRenderedFeedText(text: string | undefined) {
+		if (!text || !terminal) {
+			return text ?? '';
+		}
+
+		return clipLineWidth(text, terminal.cols);
+	}
+
 	async function handleIncoming(data: MessageEvent['data']) {
 		const payload = await decodeIncoming(data);
 		if (!payload || !terminal) return;
 
-		terminal.write(payload);
+		writeToTerminal(payload);
 	}
 
 	function focusTerminal() {
@@ -489,7 +514,8 @@
 	$effect(() => {
 		if (!mounted || !terminal || !isFeedMode) return;
 
-		const update = getTerminalFeedUpdate(lastRenderedFeedText, feedText);
+		const renderedFeedText = getRenderedFeedText(feedText);
+		const update = getTerminalFeedUpdate(lastRenderedFeedText, renderedFeedText);
 		if (update.mode === 'none') {
 			return;
 		}
@@ -497,13 +523,15 @@
 		if (update.mode === 'replace') {
 			terminal.reset();
 			if (update.text.length > 0) {
-				terminal.write(update.text);
+				writeToTerminal(update.text);
+			} else {
+				terminal.scrollToBottom();
 			}
 		} else if (update.mode === 'append' && update.text.length > 0) {
-			terminal.write(update.text);
+			writeToTerminal(update.text);
 		}
 
-		lastRenderedFeedText = feedText ?? '';
+		lastRenderedFeedText = renderedFeedText;
 		terminal.scrollToBottom();
 	});
 
@@ -614,6 +642,7 @@
 
 	.terminal-host :global(.xterm-viewport) {
 		overflow-y: auto;
+		overflow-x: hidden;
 		scrollbar-width: thin;
 		scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
 	}
