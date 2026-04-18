@@ -15,6 +15,30 @@ export { demoAgentNodePlacements, demoAgentNodes } from './agent-graph/fixtures'
 export { fork, forkPromptSchema, merge, type ForkPrompt } from './agent-graph/api';
 export { createAgentGraphState, type AgentGraphState } from './agent-graph/state.svelte';
 export {
+	createOrchestratorClient,
+	OrchestratorApiError,
+	type OrchestratorClient,
+	type OrchestratorClientOptions,
+	type OrchestratorState,
+	type OrchestratorInstance,
+	type CreateInstanceResponse,
+	type PromptInstanceResponse,
+	type ForkInstanceResponse,
+	type MergePrepResponse,
+	type MergeResponse,
+	type StopInstanceResponse,
+	type ForkPointArtifact,
+	type MergeDetails
+} from './orchestrator/client';
+export {
+	getOrchestratorEventStreamUrl,
+	parseOrchestratorEvent,
+	subscribeToOrchestratorEvents,
+	type OrchestratorEvent,
+	type OrchestratorEventStreamStatus,
+	type OrchestratorEventStreamSubscription
+} from './orchestrator/events';
+export {
 	agentNodePlacementSchema,
 	agentNodeDetailsSchema,
 	agentNodeContextUsageSchema,

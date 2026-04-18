@@ -1,10 +1,18 @@
 <script lang="ts">
+	import { browser } from '$app/environment';
+	import { onMount } from 'svelte';
 	import { computeLayoutPlacements } from '$lib/agent-graph/layout';
 	import { fork, forkPromptSchema, merge } from '$lib/agent-graph/api';
 	import { demoAgentNodePlacements, demoAgentNodes } from '$lib/agent-graph/fixtures';
 	import AgentCanvas from '$lib/components/agent-graph/AgentCanvas.svelte';
 	import AgentNodeViewSidebar from '$lib/components/agent-graph/AgentNodeViewSidebar.svelte';
 	import AgentCanvasSidebar from '$lib/components/agent-graph/AgentCanvasSidebar.svelte';
+	import { createOrchestratorClient } from '$lib/orchestrator/client';
+	import {
+		subscribeToOrchestratorEvents,
+		type OrchestratorEventStreamStatus
+	} from '$lib/orchestrator/events';
+	import type { OrchestratorState } from '$lib/orchestrator/types';
 	import type { ControlOption } from '$lib/components/primitives/types';
 	import {
 		createAgentNodePlacement,
@@ -31,6 +39,12 @@
 	let nodeViewPrompt = $state('');
 	const isNodeViewOpen = true;
 	let isSidebarOpen = $state(true);
+	let orchestratorState = $state<OrchestratorState | null>(null);
+	let orchestratorLoadStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
+	let orchestratorStreamStatus = $state<OrchestratorEventStreamStatus>('closed');
+	let orchestratorError = $state<string | null>(null);
+
+	const orchestratorClient = createOrchestratorClient();
 
 	const activePlacements = $derived(
 		computeLayoutPlacements({
@@ -99,6 +113,64 @@
 		basePlacements = [...basePlacements, mergedPlacement];
 		selectedNodeId = mergedNode.id;
 	};
+
+	const refreshOrchestratorState = async () => {
+		orchestratorLoadStatus = 'loading';
+		orchestratorError = null;
+
+		try {
+			orchestratorState = await orchestratorClient.getState();
+			orchestratorLoadStatus = 'ready';
+		} catch (error) {
+			orchestratorLoadStatus = 'error';
+			orchestratorError =
+				error instanceof Error ? error.message : 'Failed to load orchestrator state.';
+		}
+	};
+
+	onMount(() => {
+		if (!browser) {
+			return;
+		}
+
+		void refreshOrchestratorState();
+
+		const subscription = subscribeToOrchestratorEvents({
+			onEvent: (event) => {
+				if (event.type === 'grid_boot') {
+					orchestratorState = orchestratorState
+						? {
+								...orchestratorState,
+								sessionId: event.session,
+								model: event.model,
+								mergeModel: event.mergeModel
+							}
+						: orchestratorState;
+				}
+
+				if (
+					event.type === 'instance_created' ||
+					event.type === 'instance_stopped' ||
+					event.type === 'fork_complete' ||
+					event.type === 'merge_complete' ||
+					event.type === 'merge_integration_created' ||
+					event.type === 'session_ready'
+				) {
+					void refreshOrchestratorState();
+				}
+			},
+			onStatusChange: (status) => {
+				orchestratorStreamStatus = status;
+			},
+			onError: (error) => {
+				orchestratorError = error.message;
+			}
+		});
+
+		return () => {
+			subscription.close();
+		};
+	});
 </script>
 
 <svelte:head>
@@ -132,5 +204,9 @@
 		bind:showNodeDetailsForAll
 		bind:isOpen={isSidebarOpen}
 		{layoutModeOptions}
+		{orchestratorState}
+		{orchestratorLoadStatus}
+		{orchestratorStreamStatus}
+		{orchestratorError}
 	/>
 </div>
