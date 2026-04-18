@@ -387,6 +387,14 @@ class WorkerHandle {
     });
   }
 
+  async readTextFile(filePath) {
+    return (await this.readFile(filePath)).toString('utf8');
+  }
+
+  async readJsonFile(filePath) {
+    return JSON.parse(await this.readTextFile(filePath));
+  }
+
   async ensureGitRepo() {
     const result = await this.exec('git -C /workspace rev-parse --is-inside-work-tree');
     if (result.exitCode !== 0) {
@@ -912,6 +920,33 @@ async function handleApiRequest(req, res, url) {
           return sendApiError(res, 400, 'BAD_REQUEST', 'message is required');
         }
         return sendJsonResponse(res, 202, orchestrator.prompt(slot, body.message));
+      }
+
+      if (method === 'GET' && parts[3] === 'artifacts' && parts[4] === 'fork-point') {
+        const worker = orchestrator.getWorker(slot);
+        try {
+          return sendJsonResponse(res, 200, await worker.readJsonFile('/state/meta/fork-point.json'));
+        } catch (error) {
+          return sendApiError(res, 404, 'ARTIFACT_NOT_FOUND', error.message);
+        }
+      }
+
+      if (method === 'GET' && parts[3] === 'artifacts' && parts[4] === 'merge-details') {
+        const worker = orchestrator.getWorker(slot);
+        try {
+          return sendJsonResponse(res, 200, await worker.readJsonFile('/state/meta/merge-details.json'));
+        } catch (error) {
+          return sendApiError(res, 404, 'ARTIFACT_NOT_FOUND', error.message);
+        }
+      }
+
+      if (method === 'GET' && parts[3] === 'artifacts' && parts[4] === 'merge-context') {
+        const worker = orchestrator.getWorker(slot);
+        try {
+          return sendTextResponse(res, 200, await worker.readTextFile('/state/meta/merge-context.md'), 'text/markdown; charset=utf-8');
+        } catch (error) {
+          return sendApiError(res, 404, 'ARTIFACT_NOT_FOUND', error.message);
+        }
       }
 
       if (method === 'POST' && parts[3] === 'fork') {
