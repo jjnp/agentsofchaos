@@ -1,4 +1,7 @@
 export { default as TerminalStream } from './components/TerminalStream.svelte';
+export { default as NodeDiffViewer } from './components/node-diff/NodeDiffViewer.svelte';
+export { default as NodeInfo } from './components/node-info/NodeInfo.svelte';
+export { default as PiSummaryView } from './components/pi-summary/PiSummaryView.svelte';
 export { default as AgentCanvas } from './components/agent-graph/AgentCanvas.svelte';
 export { default as AgentCanvasSidebar } from './components/agent-graph/AgentCanvasSidebar.svelte';
 export { default as AgentNodeViewSidebar } from './components/agent-graph/AgentNodeViewSidebar.svelte';
