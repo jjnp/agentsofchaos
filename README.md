@@ -80,6 +80,9 @@ Main env file for the orchestrated demo:
 
 - `apps/orchestrator/.env`
 
+Current default model:
+- `openai/gpt-5.4-mini`
+
 Template:
 
 - `apps/orchestrator/.env.example`

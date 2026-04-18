@@ -31,6 +31,7 @@ export class CardManager {
     const mergeTarget = fragment.querySelector('.mergeTarget');
     const bundleBtn = fragment.querySelector('.bundle');
     const mergeBtn = fragment.querySelector('.merge');
+    const lineage = fragment.querySelector('.lineage');
     const eventBox = fragment.querySelector('.event-box');
 
     title.textContent = `Instance ${slot + 1}`;
@@ -63,7 +64,7 @@ export class CardManager {
 
     this.gridEl.appendChild(fragment);
 
-    const card = { article, meta, terminal, prompt, mergeTarget, eventBox, events: [] };
+    const card = { article, meta, terminal, prompt, mergeTarget, lineage, eventBox, events: [] };
     this.cards.set(slot, card);
     this.refreshMergeTargets();
     return card;
@@ -115,5 +116,10 @@ export class CardManager {
   setMeta(slot, text) {
     const card = this.cards.get(slot);
     if (card) card.meta.textContent = text;
+  }
+
+  setLineage(slot, lines) {
+    const card = this.cards.get(slot);
+    if (card) card.lineage.textContent = lines.join('\n');
   }
 }
