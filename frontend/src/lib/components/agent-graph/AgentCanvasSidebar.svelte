@@ -5,10 +5,12 @@
 
 	let {
 		activeLayoutMode = $bindable<LayoutMode>('rings'),
+		showNodeDetailsForAll = $bindable(true),
 		layoutModeOptions,
 		isOpen = $bindable(true)
 	}: {
 		activeLayoutMode?: LayoutMode;
+		showNodeDetailsForAll?: boolean;
 		layoutModeOptions: readonly ControlOption[];
 		isOpen?: boolean;
 	} = $props();
@@ -59,6 +61,21 @@
 			value={activeLayoutMode}
 			onSelect={handleLayoutModeSelect}
 		/>
+
+		<label class="canvas-sidebar__switch">
+			<div>
+				<span class="canvas-sidebar__switch-label">Node details</span>
+				<p class="canvas-sidebar__switch-copy">Show the info cards for every node.</p>
+			</div>
+			<span class="canvas-sidebar__checkbox-wrap">
+				<input
+					type="checkbox"
+					class="canvas-sidebar__checkbox"
+					bind:checked={showNodeDetailsForAll}
+					aria-label="Toggle node details"
+				/>
+			</span>
+		</label>
 	</aside>
 </div>
 
@@ -135,6 +152,56 @@
 
 	.canvas-sidebar__spacer {
 		flex: 1;
+	}
+
+	.canvas-sidebar__switch {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		padding: 0.2rem 0;
+	}
+
+	.canvas-sidebar__switch-label {
+		display: block;
+		font-size: 0.82rem;
+		font-weight: 600;
+		color: var(--color-text);
+	}
+
+	.canvas-sidebar__switch-copy {
+		margin-top: 0.2rem;
+		font-size: 0.72rem;
+		line-height: 1.4;
+		color: var(--color-text-muted);
+	}
+
+	.canvas-sidebar__checkbox-wrap {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2rem;
+		height: 2rem;
+		flex-shrink: 0;
+		border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+		border-radius: 0.7rem;
+		background: color-mix(in srgb, var(--color-surface-elevated) 88%, black);
+		box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.03);
+	}
+
+	.canvas-sidebar__checkbox {
+		flex-shrink: 0;
+		width: 1rem;
+		height: 1rem;
+		margin: 0;
+		accent-color: var(--color-primary);
+		cursor: pointer;
+	}
+
+	.canvas-sidebar__checkbox:hover,
+	.canvas-sidebar__checkbox:focus-visible {
+		outline: none;
+		filter: brightness(1.08);
 	}
 
 	@media (max-width: 640px) {

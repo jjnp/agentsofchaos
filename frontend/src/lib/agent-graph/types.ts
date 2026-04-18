@@ -2,10 +2,20 @@ import * as v from 'valibot';
 
 export type AgentNodeId = string & { readonly __brand: 'AgentNodeId' };
 
+export type AgentNodeContextUsage = Readonly<{
+	tokens: number;
+	percentage: number;
+}>;
+
+export type AgentNodeDetails = Readonly<{
+	contextUsage: AgentNodeContextUsage;
+}>;
+
 export type AgentNode = Readonly<{
 	id: AgentNodeId;
 	name: string;
 	parentId: AgentNodeId | null;
+	details: AgentNodeDetails | null;
 }>;
 
 export type AgentNodePlacement = Readonly<{
@@ -19,10 +29,20 @@ export type LayoutMode = (typeof layoutModes)[number];
 
 export const agentNodeIdSchema = v.pipe(v.string(), v.uuid());
 
+export const agentNodeContextUsageSchema = v.object({
+	tokens: v.pipe(v.number(), v.integer(), v.minValue(0)),
+	percentage: v.pipe(v.number(), v.minValue(0), v.maxValue(100))
+});
+
+export const agentNodeDetailsSchema = v.object({
+	contextUsage: agentNodeContextUsageSchema
+});
+
 export const agentNodeSchema = v.object({
 	id: agentNodeIdSchema,
 	name: v.pipe(v.string(), v.minLength(1)),
-	parentId: v.nullable(agentNodeIdSchema)
+	parentId: v.nullable(agentNodeIdSchema),
+	details: v.nullable(agentNodeDetailsSchema)
 });
 
 export const agentNodePlacementSchema = v.object({
@@ -46,17 +66,29 @@ export const createAgentNode = (input: {
 	id?: string;
 	name: string;
 	parentId?: string | null;
+	details?: {
+		contextUsage: {
+			tokens: number;
+			percentage: number;
+		};
+	} | null;
 }): AgentNode => {
 	const parsedNode = v.parse(agentNodeSchema, {
 		id: input.id ?? createAgentNodeId(),
 		name: input.name,
-		parentId: input.parentId ?? null
+		parentId: input.parentId ?? null,
+		details: input.details
+			? {
+					contextUsage: input.details.contextUsage
+				}
+			: null
 	});
 
 	return {
 		...parsedNode,
 		id: parsedNode.id as AgentNodeId,
-		parentId: parsedNode.parentId as AgentNodeId | null
+		parentId: parsedNode.parentId as AgentNodeId | null,
+		details: parsedNode.details as AgentNodeDetails | null
 	};
 };
 

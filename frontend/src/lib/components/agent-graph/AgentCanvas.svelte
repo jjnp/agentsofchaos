@@ -9,7 +9,7 @@
 		getViewportAfterZoom,
 		type CanvasViewport
 	} from '$lib/agent-graph/layout';
-	import { createAgentGraphState } from '$lib/agent-graph/state.svelte';
+	import type { AgentGraphState } from '$lib/agent-graph/state.svelte';
 	import type {
 		AgentNode,
 		AgentNodeId,
@@ -21,8 +21,9 @@
 	let {
 		nodes,
 		placements,
-		selectedNodeId = $bindable<AgentNodeId | null>(null),
+		selectedNodeId: initialSelectedNodeId = null,
 		activeLayoutMode = $bindable<LayoutMode>('rings'),
+		showNodeDetailsForAll = true,
 		minScale = 0.5,
 		maxScale = 2.2,
 		class: className = ''
@@ -31,15 +32,14 @@
 		placements: readonly AgentNodePlacement[];
 		selectedNodeId?: AgentNodeId | null;
 		activeLayoutMode?: LayoutMode;
+		showNodeDetailsForAll?: boolean;
 		minScale?: number;
 		maxScale?: number;
 		class?: string;
 	} = $props();
 
-	const graphState = createAgentGraphState([], [], null, activeLayoutMode);
-	setAgentGraphContext(() => graphState);
-
-	let viewport = $state<CanvasViewport>({ x: 0, y: 0, scale: 1 });
+	let internalSelectedNodeId = $state<AgentNodeId | null>(null);
+	let visibleNodeDetailsIds = $state<readonly AgentNodeId[]>([]);
 	let canvasElement = $state<HTMLDivElement | null>(null);
 	let canvasWidth = $state(0);
 	let canvasHeight = $state(0);
@@ -47,41 +47,66 @@
 	let activePointerId = $state<number | null>(null);
 	let panStart = $state({ x: 0, y: 0 });
 	let viewportStart = $state({ x: 0, y: 0 });
+	let viewport = $state<CanvasViewport>({ x: 0, y: 0, scale: 1 });
 
-	$effect(() => {
-		graphState.setNodes(nodes);
-		graphState.setPlacements(placements);
-		if (!graphState.selectedNodeId && nodes[0]) {
-			graphState.setSelectedNodeId(nodes[0].id);
+	const graphState: AgentGraphState = {
+		get nodes() {
+			return nodes;
+		},
+		setNodes() {},
+		get placements() {
+			return placements;
+		},
+		setPlacements() {},
+		get activeLayoutMode() {
+			return activeLayoutMode;
+		},
+		setActiveLayoutMode(nextLayoutMode) {
+			activeLayoutMode = nextLayoutMode;
+		},
+		get selectedNodeId() {
+			return internalSelectedNodeId;
+		},
+		setSelectedNodeId(nextSelectedNodeId) {
+			internalSelectedNodeId = nextSelectedNodeId;
+		},
+		isNodeDetailsVisible(nodeId) {
+			return visibleNodeDetailsIds.includes(nodeId);
+		},
+		toggleNodeDetails(nodeId) {
+			visibleNodeDetailsIds = visibleNodeDetailsIds.includes(nodeId)
+				? visibleNodeDetailsIds.filter((visibleNodeId) => visibleNodeId !== nodeId)
+				: [...visibleNodeDetailsIds, nodeId];
+		},
+		setAllNodeDetailsVisibility(isVisible) {
+			visibleNodeDetailsIds = isVisible ? nodes.map((node) => node.id) : [];
+		},
+		get showNodeDetailsForAll() {
+			return nodes.length > 0 && nodes.every((node) => visibleNodeDetailsIds.includes(node.id));
 		}
+	};
+
+	setAgentGraphContext(() => graphState);
+
+	$effect(() => {
+		internalSelectedNodeId =
+			initialSelectedNodeId && nodes.some((node) => node.id === initialSelectedNodeId)
+				? initialSelectedNodeId
+				: nodes.some((node) => node.id === internalSelectedNodeId)
+					? internalSelectedNodeId
+					: (nodes[0]?.id ?? null);
 	});
 
 	$effect(() => {
-		graphState.setSelectedNodeId(
-			selectedNodeId ?? graphState.selectedNodeId ?? nodes[0]?.id ?? null
-		);
-	});
-
-	$effect(() => {
-		graphState.setActiveLayoutMode(activeLayoutMode);
-	});
-
-	$effect(() => {
-		selectedNodeId = graphState.selectedNodeId;
-	});
-
-	$effect(() => {
-		activeLayoutMode = graphState.activeLayoutMode;
+		visibleNodeDetailsIds = showNodeDetailsForAll ? nodes.map((node) => node.id) : [];
 	});
 
 	const placementLookup = $derived(
-		new Map(graphState.placements.map((placement) => [placement.nodeId, placement]))
+		new Map(placements.map((placement) => [placement.nodeId, placement]))
 	);
-	const connectionSegments = $derived(
-		getConnectionSegments(graphState.nodes, graphState.placements)
-	);
-	const maxDepth = $derived(getMaxNodeDepth(graphState.nodes));
-	const showDepthRings = $derived(graphState.activeLayoutMode === 'rings');
+	const connectionSegments = $derived(getConnectionSegments(nodes, placements));
+	const maxDepth = $derived(getMaxNodeDepth(nodes));
+	const showDepthRings = $derived(activeLayoutMode === 'rings');
 	const sceneTransform = $derived(
 		getCanvasTransform(viewport, { width: canvasWidth, height: canvasHeight })
 	);
@@ -195,7 +220,7 @@
 				{/each}
 			</g>
 			<g class="agent-canvas__nodes">
-				{#each graphState.nodes as node (node.id)}
+				{#each nodes as node (node.id)}
 					{#if placementLookup.get(node.id)}
 						<Node {node} placement={placementLookup.get(node.id)!} />
 					{/if}
@@ -208,6 +233,7 @@
 <style>
 	.agent-canvas {
 		position: relative;
+		width: 100%;
 		overflow: hidden;
 		min-height: 32rem;
 		border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
