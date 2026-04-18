@@ -1,13 +1,19 @@
 <script lang="ts">
 	import { getAgentGraphContext } from '$lib/agent-graph/context';
-	import type { AgentNode, AgentNodePlacement } from '$lib/agent-graph/types';
+	import type { AgentNode, AgentNodeId, AgentNodePlacement } from '$lib/agent-graph/types';
 
 	let {
 		node,
-		placement
+		placement,
+		isMergeTarget = false,
+		isMergeSource = false,
+		onPointerDown
 	}: {
 		node: AgentNode;
 		placement: AgentNodePlacement;
+		isMergeTarget?: boolean;
+		isMergeSource?: boolean;
+		onPointerDown?: (nodeId: AgentNodeId, event: PointerEvent) => void;
 	} = $props();
 
 	type LabelAnchor = 'start' | 'middle' | 'end';
@@ -42,6 +48,8 @@
 
 <g
 	class:selected={isSelected}
+	class:merge-target={isMergeTarget}
+	class:merge-source={isMergeSource}
 	class:root={isRootNode}
 	class="agent-node"
 	transform={`translate(${placement.x} ${placement.y})`}
@@ -49,9 +57,14 @@
 	role="button"
 	aria-label={node.name}
 	data-agent-node-interactive="true"
+	data-agent-node-id={node.id}
 	onclick={handleSelect}
 	onmousedown={(event) => {
 		event.preventDefault();
+	}}
+	onpointerdown={(event) => {
+		event.stopPropagation();
+		onPointerDown?.(node.id, event);
 	}}
 	onkeydown={(event) => {
 		if (event.key === 'Enter' || event.key === ' ') {
@@ -119,8 +132,19 @@
 	}
 
 	.agent-node.selected .agent-node__selection-ring,
+	.agent-node.merge-target .agent-node__selection-ring,
+	.agent-node.merge-source .agent-node__selection-ring,
 	.agent-node:focus-visible .agent-node__selection-ring {
 		opacity: 1;
+	}
+
+	.agent-node.merge-target .agent-node__selection-ring {
+		stroke: color-mix(in srgb, var(--color-primary-accent) 72%, transparent);
+		stroke-dasharray: 5 4;
+	}
+
+	.agent-node.merge-source .agent-node__selection-ring {
+		stroke-dasharray: 5 4;
 	}
 
 	.agent-node__hit {
@@ -139,9 +163,16 @@
 
 	.agent-node.root .agent-node__dot,
 	.agent-node:hover .agent-node__dot,
+	.agent-node.merge-target .agent-node__dot,
+	.agent-node.merge-source .agent-node__dot,
 	.agent-node.selected .agent-node__dot,
 	.agent-node:focus-visible .agent-node__dot {
 		stroke: var(--color-primary);
+	}
+
+	.agent-node.merge-target .agent-node__dot {
+		stroke: var(--color-primary-accent);
+		fill: color-mix(in srgb, var(--color-primary-accent) 18%, var(--color-canvas));
 	}
 
 	.agent-node.selected .agent-node__dot,
