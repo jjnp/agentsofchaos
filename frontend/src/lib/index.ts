@@ -1,1 +1,7 @@
-// place files you want to import through the `$lib` alias in this folder.
+export {
+	themeColors,
+	themeRadii,
+	type ThemeColorName,
+	type ThemeColors,
+	type ThemeRadiusName
+} from './theme/tokens';
