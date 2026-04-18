@@ -1,3 +1,10 @@
+## Project Context
+
+- See `README.md` for the short project description.
+- This project is building a novel graph-based interface for coding agents.
+- Favor ideas that make branching, parallel exploration, graph navigation, and mergeable reasoning paths clearer and more interactive for users.
+- Project-local slash commands are available via `.pi/prompts/`, including `/pr` and `/merge`.
+
 ## Working Style
 
 - Create small, clear commits.
