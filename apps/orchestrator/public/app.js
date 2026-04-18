@@ -82,15 +82,16 @@ function handleActionEvent(payload) {
     merge_start: `Creating integration instance for ${payload.sourceSlot + 1} onto ${payload.targetSlot + 1}...`,
     merge_integration_created: `Integration instance ${payload.integrationSlot + 1} created from ${payload.targetSlot + 1}`,
     merge_complete: `Merge finished: ${payload.sourceSlot + 1} + ${payload.targetSlot + 1} -> ${payload.integrationSlot + 1}`,
+    fork_point_recorded: `Fork point recorded for instance ${payload.slot + 1}`,
   };
 
   if (payload.type === 'fork_complete') {
-    lineage.markFork(payload.sourceSlot, payload.targetSlot);
+    lineage.markFork(payload.sourceSlot, payload.targetSlot, payload.forkPoint || null);
     refreshLineage(payload.targetSlot);
   }
 
   if (payload.type === 'merge_integration_created') {
-    lineage.markFork(payload.targetSlot, payload.integrationSlot);
+    lineage.markFork(payload.targetSlot, payload.integrationSlot, payload.forkPoint || null);
     refreshLineage(payload.integrationSlot);
   }
 

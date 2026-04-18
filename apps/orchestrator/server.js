@@ -54,6 +54,53 @@ function createTarBuffer(fileName, content) {
   });
 }
 
+function safeJsonlParse(content) {
+  return String(content || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
+
+function summarizeSessionUsage(entries) {
+  const assistants = entries.filter((entry) => entry.role === 'assistant');
+  const latestAssistant = assistants.at(-1) || null;
+  const totals = assistants.reduce((acc, entry) => {
+    const usage = entry.usage || {};
+    acc.inputTokens += usage.input || 0;
+    acc.outputTokens += usage.output || 0;
+    acc.cacheReadTokens += usage.cacheRead || 0;
+    acc.cacheWriteTokens += usage.cacheWrite || 0;
+    acc.totalTokens += usage.totalTokens || 0;
+    return acc;
+  }, {
+    assistantMessages: assistants.length,
+    totalEntries: entries.length,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    totalTokens: 0,
+  });
+
+  return {
+    ...totals,
+    latestResponseTokens: latestAssistant?.usage?.totalTokens || 0,
+    latestStopReason: latestAssistant?.stopReason || null,
+  };
+}
+
+function shortSha(value) {
+  return value ? String(value).slice(0, 12) : null;
+}
+
 async function ensureNetwork() {
   const networks = await docker.listNetworks({ filters: { name: [WORKER_NETWORK] } });
   if (networks.some((network) => network.Name === WORKER_NETWORK)) return;
@@ -268,6 +315,10 @@ class WorkerHandle {
     await this.container.putArchive(archive, { path: dir });
   }
 
+  async writeJson(targetPath, value) {
+    await this.putFile(targetPath, JSON.stringify(value, null, 2));
+  }
+
   async readFile(filePath) {
     const archive = await this.container.getArchive({ path: filePath });
     const chunks = [];
@@ -374,6 +425,57 @@ class WorkerHandle {
     return result.stdout.trim();
   }
 
+  async getGitHead() {
+    await this.ensureGitRepo();
+    const result = await this.exec('git -C /workspace rev-parse HEAD');
+    if (result.exitCode !== 0) {
+      throw new Error(`git rev-parse failed for ${this.label}: ${result.stderr || result.stdout}`);
+    }
+    return result.stdout.trim();
+  }
+
+  async getForkPointGitDetails() {
+    await this.ensureGitRepo();
+    const script = [
+      'head=$(git -C /workspace rev-parse HEAD)',
+      'subject=$(git -C /workspace log -1 --pretty=%s)',
+      'parents=$(git -C /workspace rev-list --parents -n 1 HEAD)',
+      'if git -C /workspace rev-parse HEAD^ >/dev/null 2>&1; then base=HEAD^; else base=$(git -C /workspace hash-object -t tree /dev/null); fi',
+      'shortstat=$(git -C /workspace diff --shortstat "$base" HEAD)',
+      'nameonly=$(git -C /workspace diff --name-only "$base" HEAD)',
+      'numstat=$(git -C /workspace diff --numstat "$base" HEAD)',
+      'patch=$(git -C /workspace diff --patch --stat --find-renames "$base" HEAD)',
+      'printf "HEAD=%s\n" "$head"',
+      'printf "SUBJECT=%s\n" "$subject"',
+      'printf "PARENTS=%s\n" "$parents"',
+      'printf "SHORTSTAT<<EOF\n%s\nEOF\n" "$shortstat"',
+      'printf "NAMEONLY<<EOF\n%s\nEOF\n" "$nameonly"',
+      'printf "NUMSTAT<<EOF\n%s\nEOF\n" "$numstat"',
+      'printf "PATCH<<EOF\n%s\nEOF\n" "$patch"',
+    ].join('; ');
+
+    const result = await this.exec(script);
+    if (result.exitCode !== 0) {
+      throw new Error(`fork-point git details failed for ${this.label}: ${result.stderr || result.stdout}`);
+    }
+
+    const stdout = result.stdout;
+    const readBlock = (name) => {
+      const match = stdout.match(new RegExp(`${name}<<EOF\\n([\\s\\S]*?)\\nEOF`));
+      return match ? match[1].trim() : '';
+    };
+
+    return {
+      head: (stdout.match(/^HEAD=(.*)$/m)?.[1] || '').trim(),
+      subject: (stdout.match(/^SUBJECT=(.*)$/m)?.[1] || '').trim(),
+      parents: (stdout.match(/^PARENTS=(.*)$/m)?.[1] || '').trim(),
+      shortStat: readBlock('SHORTSTAT'),
+      changedFiles: readBlock('NAMEONLY').split('\n').map((line) => line.trim()).filter(Boolean),
+      numStat: readBlock('NUMSTAT').split('\n').map((line) => line.trim()).filter(Boolean),
+      patch: clipText(readBlock('PATCH'), 16000),
+    };
+  }
+
   async getLatestSession() {
     const locate = await this.exec("latest=$(find /state/pi-agent/sessions -type f -name '*.jsonl' 2>/dev/null | sort | tail -n 1); if [ -n \"$latest\" ]; then printf '%s' \"$latest\"; fi");
     if (locate.exitCode !== 0) {
@@ -384,6 +486,68 @@ class WorkerHandle {
     if (!latestPath) return null;
     const content = (await this.readFile(latestPath)).toString('utf8');
     return { path: latestPath, content };
+  }
+
+  async captureForkPoint(reason, extra = {}) {
+    const [gitStatus, gitHead, gitDetails, latestSession] = await Promise.all([
+      this.inspectGitStatus().catch(() => null),
+      this.getGitHead().catch(() => null),
+      this.getForkPointGitDetails().catch(() => null),
+      this.getLatestSession().catch(() => null),
+    ]);
+
+    const sessionEntries = safeJsonlParse(latestSession?.content || '');
+    const contextUsage = summarizeSessionUsage(sessionEntries);
+    const latestEntry = sessionEntries.at(-1) || null;
+    const forkPoint = {
+      reason,
+      capturedAt: Date.now(),
+      slot: this.slot,
+      label: this.label,
+      agentUuid: this.agentUuid,
+      git: {
+        head: gitHead,
+        shortHead: shortSha(gitHead),
+        status: gitStatus,
+        subject: gitDetails?.subject || null,
+        parents: gitDetails?.parents || null,
+        shortStat: gitDetails?.shortStat || null,
+        changedFiles: gitDetails?.changedFiles || [],
+        numStat: gitDetails?.numStat || [],
+        patch: gitDetails?.patch || '',
+      },
+      session: {
+        path: latestSession?.path || null,
+        latestEntryId: latestEntry?.id || null,
+        totalEntries: contextUsage.totalEntries,
+        assistantMessages: contextUsage.assistantMessages,
+        latestStopReason: contextUsage.latestStopReason,
+      },
+      contextUsage,
+      ...extra,
+    };
+
+    await this.writeJson('/state/meta/fork-point.json', forkPoint);
+    this.emit({
+      type: 'fork_point_recorded',
+      reason,
+      path: '/state/meta/fork-point.json',
+      forkPoint: {
+        reason: forkPoint.reason,
+        capturedAt: forkPoint.capturedAt,
+        git: {
+          shortHead: forkPoint.git.shortHead,
+          shortStat: forkPoint.git.shortStat,
+          changedFiles: forkPoint.git.changedFiles,
+        },
+        contextUsage: {
+          totalTokens: forkPoint.contextUsage.totalTokens,
+          latestResponseTokens: forkPoint.contextUsage.latestResponseTokens,
+          assistantMessages: forkPoint.contextUsage.assistantMessages,
+        },
+      },
+    });
+    return forkPoint;
   }
 
   async writeMergeContext(markdown, details) {
@@ -495,9 +659,10 @@ class BrowserSession {
   async fork(sourceSlot) {
     const source = this.getWorker(sourceSlot);
     this.emit({ type: 'fork_start', sourceSlot, sourceLabel: source.label });
+    const forkPoint = await source.captureForkPoint('fork');
     const image = await source.commitSnapshot();
     const target = await this.createInstance(image);
-    this.emit({ type: 'fork_complete', sourceSlot, targetSlot: target.slot, targetLabel: target.label, image });
+    this.emit({ type: 'fork_complete', sourceSlot, targetSlot: target.slot, targetLabel: target.label, image, forkPoint });
   }
 
   async prepareMergeBundle(sourceSlot, targetSlot) {
@@ -528,6 +693,7 @@ class BrowserSession {
 
     this.emit({ type: 'merge_start', sourceSlot, targetSlot, sourceLabel: source.label, targetLabel: target.label });
 
+    const forkPoint = await target.captureForkPoint('merge integration base', { mergeSourceSlot: sourceSlot, mergeTargetSlot: targetSlot });
     const integrationImage = await target.commitSnapshot();
     const integration = await this.createInstance(integrationImage);
     const integrationSlot = integration.slot;
@@ -540,6 +706,7 @@ class BrowserSession {
       integrationLabel: integration.label,
       integrationAgentUuid: integration.agentUuid,
       image: integrationImage,
+      forkPoint,
     });
 
     const bundle = await source.exportBundle();

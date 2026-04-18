@@ -11,6 +11,7 @@ export class LineageStore {
         parentSlot: null,
         rootSlot: slot,
         mergedFrom: [],
+        forkPoint: null,
       });
     }
     return this.records.get(slot);
@@ -22,11 +23,12 @@ export class LineageStore {
     return record;
   }
 
-  markFork(sourceSlot, targetSlot) {
+  markFork(sourceSlot, targetSlot, forkPoint = null) {
     const source = this.ensure(sourceSlot);
     const target = this.ensure(targetSlot);
     target.parentSlot = sourceSlot;
     target.rootSlot = source.rootSlot ?? sourceSlot;
+    target.forkPoint = forkPoint || target.forkPoint || null;
     return target;
   }
 
@@ -36,6 +38,12 @@ export class LineageStore {
       target.mergedFrom.push(sourceSlot);
     }
     return target;
+  }
+
+  setForkPoint(slot, forkPoint) {
+    const record = this.ensure(slot);
+    record.forkPoint = forkPoint || null;
+    return record;
   }
 
   remove(slot) {
@@ -60,10 +68,19 @@ export class LineageStore {
       ? '—'
       : record.mergedFrom.map((value) => `instance ${value + 1}`).join(', ');
 
+    const forkHead = record.forkPoint?.git?.shortHead || '—';
+    const forkStat = record.forkPoint?.git?.shortStat || '—';
+    const changedFiles = record.forkPoint?.git?.changedFiles?.length ?? 0;
+    const totalTokens = record.forkPoint?.contextUsage?.totalTokens ?? null;
+    const assistantMessages = record.forkPoint?.contextUsage?.assistantMessages ?? null;
+
     return [
       `root: ${root}`,
       `parent: ${parent}`,
       `merged: ${merged}`,
+      `fork head: ${forkHead}`,
+      `fork diff: ${forkStat} (${changedFiles} files)`,
+      `fork ctx: ${totalTokens == null ? '—' : `${totalTokens} tok / ${assistantMessages} asst`}`,
     ];
   }
 }
