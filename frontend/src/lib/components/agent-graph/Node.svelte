@@ -32,9 +32,13 @@
 	const showNodeDetails = $derived(graphState.isNodeDetailsVisible(node.id));
 	const showDetails = $derived(node.details !== null && showNodeDetails);
 	const showTitleLabel = $derived(!showNodeDetails);
-	const detailBoxWidth = 152;
-	const detailBoxHeight = 62;
-	const detailBoxOffsetX = $derived(isRootNode ? 30 : isLeftSide ? -(detailBoxWidth + 34) : 34);
+	const liveOutputPreview = $derived(node.details?.liveOutputPreview ?? []);
+	const hasLiveOutputPreview = $derived(liveOutputPreview.length > 0);
+	const detailBoxWidth = $derived(hasLiveOutputPreview ? 214 : 152);
+	const detailBoxHeight = $derived(hasLiveOutputPreview ? 112 : 62);
+	const detailBoxOffsetX = $derived(
+		isRootNode ? 30 : isLeftSide ? -(detailBoxWidth + 34) : 34
+	);
 	const detailTextAnchor = $derived<LabelAnchor>(isLeftSide ? 'end' : 'start');
 	const detailTextX = $derived(
 		isLeftSide ? detailBoxOffsetX + detailBoxWidth - 12 : detailBoxOffsetX + 12
@@ -42,6 +46,8 @@
 	const contextUsageText = $derived(
 		node.details ? `Context ${node.details.contextUsage.percentage}%` : ''
 	);
+	const terminalPanelX = $derived(isLeftSide ? detailBoxOffsetX + 10 : detailBoxOffsetX + 10);
+	const terminalPanelWidth = $derived(detailBoxWidth - 20);
 
 	const handleSelect = () => {
 		graphState.setSelectedNodeId(node.id);
@@ -85,17 +91,37 @@
 				rx="14"
 				class="agent-node__details-panel"
 			></rect>
-			<text x={detailTextX} y="-10" text-anchor={detailTextAnchor} class="agent-node__details-name">
+			<text x={detailTextX} y={hasLiveOutputPreview ? '-26' : '-10'} text-anchor={detailTextAnchor} class="agent-node__details-name">
 				{node.name}
 			</text>
 			<text
 				x={detailTextX}
-				y="10"
+				y={hasLiveOutputPreview ? '-7' : '10'}
 				text-anchor={detailTextAnchor}
 				class="agent-node__details-context"
 			>
 				{contextUsageText}
 			</text>
+			{#if hasLiveOutputPreview}
+				<rect
+					x={terminalPanelX}
+					y="10"
+					width={terminalPanelWidth}
+					height="42"
+					rx="8"
+					class="agent-node__details-terminal-panel"
+				></rect>
+				{#each liveOutputPreview as line, index (`${node.id}-${index}-${line}`)}
+					<text
+						x={isLeftSide ? terminalPanelX + terminalPanelWidth - 8 : terminalPanelX + 8}
+						y={24 + index * 12}
+						text-anchor={detailTextAnchor}
+						class="agent-node__details-terminal-line"
+					>
+						{line}
+					</text>
+				{/each}
+			{/if}
 		</g>
 	{/if}
 
@@ -219,6 +245,11 @@
 		font-family: var(--font-sans);
 	}
 
+	.agent-node__details-terminal-line {
+		font-family:
+			'Berkeley Mono', 'JetBrains Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
+	}
+
 	.agent-node__spinner {
 		pointer-events: none;
 	}
@@ -268,6 +299,12 @@
 		stroke-width: 1;
 	}
 
+	.agent-node__details-terminal-panel {
+		fill: rgb(5 6 5 / 0.92);
+		stroke: color-mix(in srgb, var(--color-border) 80%, transparent);
+		stroke-width: 1;
+	}
+
 	.agent-node__details-name {
 		fill: var(--color-text);
 		font-size: 0.72rem;
@@ -277,5 +314,10 @@
 	.agent-node__details-context {
 		fill: color-mix(in srgb, var(--color-primary) 54%, var(--color-text));
 		font-size: 0.68rem;
+	}
+
+	.agent-node__details-terminal-line {
+		fill: #cfd7bc;
+		font-size: 0.46rem;
 	}
 </style>

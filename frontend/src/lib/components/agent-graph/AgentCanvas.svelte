@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { setAgentGraphContext } from '$lib/agent-graph/context';
 	import {
 		getCanvasPointFromScreen,
@@ -31,6 +32,7 @@
 		showNodeDetailsForAll = true,
 		onSelectedNodeChange,
 		onMerge,
+		recenterKey = 0,
 		minScale = 0.5,
 		maxScale = 2.2,
 		class: className = ''
@@ -42,6 +44,7 @@
 		showNodeDetailsForAll?: boolean;
 		onSelectedNodeChange?: (nodeId: AgentNodeId | null) => void;
 		onMerge?: (sourceNodeId: AgentNodeId, targetNodeId: AgentNodeId) => void;
+		recenterKey?: number;
 		minScale?: number;
 		maxScale?: number;
 		class?: string;
@@ -150,6 +153,60 @@
 	const patternTransform = $derived(
 		`translate(${canvasWidth / 2 + viewport.x} ${canvasHeight / 2 + viewport.y}) scale(${viewport.scale})`
 	);
+
+	function recenterViewport() {
+		if (placements.length === 0 || canvasWidth <= 0 || canvasHeight <= 0) {
+			viewport = { x: 0, y: 0, scale: 1 };
+			return;
+		}
+
+		const bounds = placements.reduce(
+			(accumulator, placement) => ({
+				minX: Math.min(accumulator.minX, placement.x),
+				maxX: Math.max(accumulator.maxX, placement.x),
+				minY: Math.min(accumulator.minY, placement.y),
+				maxY: Math.max(accumulator.maxY, placement.y)
+			}),
+			{ minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity }
+		);
+
+		const horizontalPadding = 240;
+		const verticalPadding = 220;
+		const worldWidth = Math.max(bounds.maxX - bounds.minX + horizontalPadding, 220);
+		const worldHeight = Math.max(bounds.maxY - bounds.minY + verticalPadding, 220);
+		const fittedScale = clamp(
+			Math.min(canvasWidth / worldWidth, canvasHeight / worldHeight),
+			minScale,
+			Math.min(maxScale, 1.2)
+		);
+		const centerX = (bounds.minX + bounds.maxX) / 2;
+		const centerY = (bounds.minY + bounds.maxY) / 2;
+
+		viewport = {
+			scale: fittedScale,
+			x: -centerX * fittedScale,
+			y: -centerY * fittedScale
+		};
+	}
+
+	const clamp = (value: number, minimum: number, maximum: number) =>
+		Math.min(Math.max(value, minimum), maximum);
+
+	let lastRecenterKey = $state(0);
+
+	onMount(() => {
+		lastRecenterKey = recenterKey;
+		recenterViewport();
+	});
+
+	$effect(() => {
+		if (recenterKey === lastRecenterKey) {
+			return;
+		}
+
+		lastRecenterKey = recenterKey;
+		recenterViewport();
+	});
 
 	const getWorldPointForEvent = (event: PointerEvent) => {
 		const rect = canvasElement?.getBoundingClientRect();

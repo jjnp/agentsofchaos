@@ -153,6 +153,7 @@ Forks an instance by capturing fork-point metadata and snapshotting its containe
     "summary": {
       "format": "pi-branch-summary-v1",
       "preview": "Capture a stable fork point for pi-1 during fork.",
+      "nodeTitle": "Frontend Orchestrator Sync",
       "readFiles": ["src/foo.ts"],
       "modifiedFiles": ["src/foo.ts"]
     }
@@ -235,6 +236,7 @@ The fork-point artifact now also includes a pi-style branch summary in:
 - `summary.format`
 - `summary.markdown`
 - `summary.preview`
+- `summary.nodeTitle`
 - `summary.readFiles`
 - `summary.modifiedFiles`
 

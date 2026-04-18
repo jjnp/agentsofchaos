@@ -11,6 +11,7 @@ export type AgentNodeContextUsage = Readonly<{
 
 export type AgentNodeDetails = Readonly<{
 	contextUsage: AgentNodeContextUsage;
+	liveOutputPreview?: readonly string[];
 }>;
 
 export type AgentNode = Readonly<{
@@ -40,7 +41,8 @@ export const agentNodeContextUsageSchema = v.object({
 });
 
 export const agentNodeDetailsSchema = v.object({
-	contextUsage: agentNodeContextUsageSchema
+	contextUsage: agentNodeContextUsageSchema,
+	liveOutputPreview: v.optional(v.array(v.string()))
 });
 
 export const agentNodeSchema = v.object({
@@ -80,6 +82,7 @@ export const createAgentNode = (input: {
 			tokens: number;
 			percentage: number;
 		};
+		liveOutputPreview?: readonly string[];
 	} | null;
 }): AgentNode => {
 	const parsedNode = v.parse(agentNodeSchema, {
@@ -90,7 +93,8 @@ export const createAgentNode = (input: {
 		status: input.status,
 		details: input.details
 			? {
-					contextUsage: input.details.contextUsage
+					contextUsage: input.details.contextUsage,
+					liveOutputPreview: input.details.liveOutputPreview
 				}
 			: null
 	});

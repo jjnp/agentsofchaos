@@ -1,18 +1,39 @@
 <script lang="ts">
 	import Dropdown from '$lib/components/primitives/Dropdown.svelte';
 	import type { ControlOption } from '$lib/components/primitives/types';
+	import type { ExplainMode } from '$lib/orchestrator/contracts';
 	import type { LayoutMode } from '$lib/agent-graph/types';
+
+	type ConnectionStatus = 'connecting' | 'open' | 'error';
 
 	let {
 		activeLayoutMode = $bindable<LayoutMode>('rings'),
 		showNodeDetailsForAll = $bindable(true),
 		layoutModeOptions,
-		isOpen = $bindable(true)
+		isOpen = $bindable(true),
+		connectionStatus = 'connecting' as ConnectionStatus,
+		instanceCount = 0,
+		explainMode = $bindable<ExplainMode>('direct'),
+		onCreateRoot,
+		onRefresh,
+		onRecenter,
+		isCreateDisabled = false,
+		isRefreshDisabled = false,
+		isRecenterDisabled = false
 	}: {
 		activeLayoutMode?: LayoutMode;
 		showNodeDetailsForAll?: boolean;
 		layoutModeOptions: readonly ControlOption[];
 		isOpen?: boolean;
+		connectionStatus?: ConnectionStatus;
+		instanceCount?: number;
+		explainMode?: ExplainMode;
+		onCreateRoot?: () => void;
+		onRefresh?: () => void;
+		onRecenter?: () => void;
+		isCreateDisabled?: boolean;
+		isRefreshDisabled?: boolean;
+		isRecenterDisabled?: boolean;
 	} = $props();
 
 	const handleLayoutModeSelect = (option: ControlOption) => {
@@ -55,12 +76,79 @@
 			</button>
 		</div>
 
+		<section class="canvas-sidebar__section">
+			<div class="canvas-sidebar__stat-row">
+				<div>
+					<p class="canvas-sidebar__section-label">Connection</p>
+					<p class={`canvas-sidebar__status canvas-sidebar__status--${connectionStatus}`}>
+						{connectionStatus}
+					</p>
+				</div>
+				<div>
+					<p class="canvas-sidebar__section-label">Live nodes</p>
+					<p class="canvas-sidebar__value">{instanceCount}</p>
+				</div>
+			</div>
+			<div class="canvas-sidebar__actions-row">
+				<button
+					type="button"
+					class="canvas-sidebar__action-button"
+					onclick={() => onCreateRoot?.()}
+					disabled={isCreateDisabled}
+				>
+					New root
+				</button>
+				<button
+					type="button"
+					class="canvas-sidebar__action-button canvas-sidebar__action-button--secondary"
+					onclick={() => onRefresh?.()}
+					disabled={isRefreshDisabled}
+				>
+					Refresh
+				</button>
+				<button
+					type="button"
+					class="canvas-sidebar__action-button canvas-sidebar__action-button--secondary"
+					onclick={() => onRecenter?.()}
+					disabled={isRecenterDisabled}
+				>
+					Recenter
+				</button>
+			</div>
+		</section>
+
 		<Dropdown
 			label="Layout mode"
 			options={layoutModeOptions}
 			value={activeLayoutMode}
 			onSelect={handleLayoutModeSelect}
 		/>
+
+		<section class="canvas-sidebar__section">
+			<p class="canvas-sidebar__section-label">File explanations</p>
+			<div class="canvas-sidebar__segmented-control" role="radiogroup" aria-label="File explanation mode">
+				<button
+					type="button"
+					class:canvas-sidebar__segmented-control-button--active={explainMode === 'direct'}
+					class="canvas-sidebar__segmented-control-button"
+					onclick={() => {
+						explainMode = 'direct';
+					}}
+				>
+					Direct
+				</button>
+				<button
+					type="button"
+					class:canvas-sidebar__segmented-control-button--active={explainMode === 'ephemeral'}
+					class="canvas-sidebar__segmented-control-button"
+					onclick={() => {
+						explainMode = 'ephemeral';
+					}}
+				>
+					Ephemeral pi
+				</button>
+			</div>
+		</section>
 
 		<label class="canvas-sidebar__switch">
 			<div>
@@ -152,6 +240,96 @@
 
 	.canvas-sidebar__spacer {
 		flex: 1;
+	}
+
+	.canvas-sidebar__section {
+		display: grid;
+		gap: 0.75rem;
+	}
+
+	.canvas-sidebar__section-label {
+		font-size: 0.68rem;
+		letter-spacing: 0.16em;
+		text-transform: uppercase;
+		color: var(--color-text-muted);
+	}
+
+	.canvas-sidebar__stat-row {
+		display: flex;
+		justify-content: space-between;
+		gap: 1rem;
+	}
+
+	.canvas-sidebar__value,
+	.canvas-sidebar__status {
+		margin-top: 0.24rem;
+		font-size: 0.84rem;
+		font-weight: 600;
+		color: var(--color-text);
+		text-transform: capitalize;
+	}
+
+	.canvas-sidebar__status--open {
+		color: var(--color-success);
+	}
+
+	.canvas-sidebar__status--connecting {
+		color: var(--color-warning);
+	}
+
+	.canvas-sidebar__status--error {
+		color: var(--color-danger);
+	}
+
+	.canvas-sidebar__actions-row {
+		display: flex;
+		gap: 0.6rem;
+	}
+
+	.canvas-sidebar__action-button,
+	.canvas-sidebar__segmented-control-button {
+		border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+		background: color-mix(in srgb, var(--color-surface-elevated) 88%, black);
+		color: var(--color-text);
+		border-radius: 999px;
+		padding: 0.65rem 0.9rem;
+		font-size: 0.72rem;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		cursor: pointer;
+		transition:
+			transform 180ms ease,
+			border-color 180ms ease,
+			color 180ms ease,
+			opacity 180ms ease;
+	}
+
+	.canvas-sidebar__action-button:hover:not(:disabled),
+	.canvas-sidebar__segmented-control-button:hover:not(:disabled) {
+		transform: translateY(-1px);
+		border-color: color-mix(in srgb, var(--color-primary) 44%, var(--color-border));
+	}
+
+	.canvas-sidebar__action-button:disabled,
+	.canvas-sidebar__segmented-control-button:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.canvas-sidebar__action-button--secondary {
+		background: transparent;
+	}
+
+	.canvas-sidebar__segmented-control {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.5rem;
+	}
+
+	.canvas-sidebar__segmented-control-button--active {
+		border-color: color-mix(in srgb, var(--color-primary) 46%, var(--color-border));
+		background: color-mix(in srgb, var(--color-primary) 18%, rgb(18 19 15 / 1));
+		color: var(--color-primary);
 	}
 
 	.canvas-sidebar__switch {

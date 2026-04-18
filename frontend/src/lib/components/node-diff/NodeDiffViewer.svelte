@@ -1,5 +1,4 @@
 <script lang="ts">
-	import DiffFileList from './DiffFileList.svelte';
 	import DiffFileView from './DiffFileView.svelte';
 	import type {
 		FileSummaryResponse,
@@ -137,42 +136,24 @@
 			</button>
 		</section>
 	{:else if overview}
-		<div class="grid gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
-			<aside class="flex min-h-0 flex-col gap-3">
-				<section class="rounded-2xl border border-border bg-surface/80 p-3.5">
-					<h3 class="text-[11px] font-semibold tracking-[0.18em] text-text uppercase">
-						Change totals
-					</h3>
-					<div class="mt-2.5 grid grid-cols-3 gap-2.5 text-center text-xs sm:text-sm">
-						<div class="rounded-2xl bg-surface-elevated px-3 py-3">
-							<div class="text-lg font-semibold text-text">{overview.totals.files}</div>
-							<div class="text-text-muted">Files</div>
-						</div>
-						<div class="rounded-2xl bg-emerald-400/10 px-3 py-3">
-							<div class="text-lg font-semibold text-emerald-100">+{overview.totals.additions}</div>
-							<div class="text-text-muted">Added</div>
-						</div>
-						<div class="rounded-2xl bg-rose-400/10 px-3 py-3">
-							<div class="text-lg font-semibold text-rose-100">-{overview.totals.deletions}</div>
-							<div class="text-text-muted">Removed</div>
-						</div>
+		<div class="flex min-h-0 flex-col gap-4">
+			<section class="rounded-2xl border border-border bg-surface/80 p-4">
+				<h3 class="text-sm font-semibold tracking-[0.18em] text-text uppercase">Change totals</h3>
+				<div class="mt-3 grid grid-cols-3 gap-3 text-center text-sm">
+					<div class="rounded-2xl bg-surface-elevated px-3 py-3">
+						<div class="text-lg font-semibold text-text">{overview.totals.files}</div>
+						<div class="text-text-muted">Files</div>
 					</div>
-				</section>
-
-				<section class="min-h-0 rounded-2xl border border-border bg-surface/80 p-3">
-					<div class="mb-2.5 flex items-center justify-between gap-3 px-1">
-						<h3 class="text-[11px] font-semibold tracking-[0.18em] text-text uppercase">
-							Changed files
-						</h3>
-						<span class="text-xs text-text-muted">{overview.files.length}</span>
+					<div class="rounded-2xl bg-emerald-400/10 px-3 py-3">
+						<div class="text-lg font-semibold text-emerald-100">+{overview.totals.additions}</div>
+						<div class="text-text-muted">Added</div>
 					</div>
-					<DiffFileList
-						files={overview.files}
-						{selectedPath}
-						onSelect={(path) => (selectedPath = path)}
-					/>
-				</section>
-			</aside>
+					<div class="rounded-2xl bg-rose-400/10 px-3 py-3">
+						<div class="text-lg font-semibold text-rose-100">-{overview.totals.deletions}</div>
+						<div class="text-text-muted">Removed</div>
+					</div>
+				</div>
+			</section>
 
 			<div class="min-h-0">
 				<DiffFileView
