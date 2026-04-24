@@ -1,147 +1,134 @@
-![Agents of Chaos screenshot](./screenshot.png)
+# Agents of Chaos
 
-# agentsofchaos
+> Agent work isn't a conversation — it's a graph of evolving intent, context, and code.
 
-**Agents of Chaos** is a graph-based interface for coding agents where agents can **branch, run in parallel, and merge back together like code**.
-
-Instead of treating an agent as one long chat, this project makes agent work visible as a live graph:
-- each node is an isolated agent instance
-- branches preserve filesystem + agent session state
-- merges create integration nodes instead of overwriting existing work
-- users can inspect lineage, prompt individual nodes, and watch output live
-
-## Hackathon pitch
-
-The core idea is simple:
-
-> **What if coding agents worked like git branches?**
-
-Our demo shows exactly that:
-- spin up a root agent
-- fork it into parallel explorations
-- let different branches try different implementations
-- merge them back into a fresh integration node
-- visualize the whole process as a navigable graph
-
-## Recommended demo
-
-The main demo is the Docker-orchestrated system in:
-- `apps/orchestrator/`
-- `apps/pi-worker/`
-
-There is also an older reference prototype in:
-- `apps/pi-rpc/`
-
-## How it works
-
-- each agent runs in its own **Docker container**
-- the orchestrator manages agent lifecycle and event streaming
-- forks are created from Docker snapshots so the child inherits:
-  - filesystem state
-  - git state
-  - persisted pi session state
-- merges are transported with **`git bundle`**, then applied in a new integration instance
-- the frontend renders the instance graph and live terminal-style output
-
-This keeps the demo grounded in real version-control semantics instead of faking branch behavior in memory.
-
-## Layout
-
-- `frontend/` — graph UI for the live demo
-- `apps/orchestrator/` — backend orchestrator, REST/SSE/WebSocket control plane
-- `apps/pi-worker/` — single-worker image that exposes a websocket bridge around `pi --mode rpc`
-- `apps/pi-rpc/` — older all-in-one prototype kept around for reference
-
-Worker containers now keep state in fixed in-container paths:
-
-- `/workspace` — git repo state
-- `/state/pi-agent` — pi session/state files
-- `/state/meta` — future lineage/merge metadata
-
-## Run the orchestrated demo
-
-For a fuller setup guide, see:
-- `docs/setup.md`
-
-Start the backend orchestrator:
-
-```bash
-cd apps/orchestrator
-./dev-up.sh
-```
-
-That script:
-
-1. builds `agentsofchaos/pi-worker:latest`
-2. starts the orchestrator with Docker socket access
-
-The orchestrator listens on:
+A **graph-native** interface for coding agents. Each node is a durable unit
+of work — a code snapshot + a context snapshot + an execution record.
+Nodes are immutable; runs are ephemeral; merges reconcile both code **and**
+context from a common ancestor, just like git.
 
 ```text
-http://localhost:3000
+                 ┌──────────────┐
+            ┌────┤ root         │
+            │    │ kind=root    │
+            │    └──────────────┘
+            │
+   ┌────────┴────────┐
+   ▼                 ▼
+┌────────┐       ┌────────┐
+│ branch │       │ branch │
+│   A    │       │   B    │
+└────┬───┘       └───┬────┘
+     │               │
+     └──────┬────────┘
+            ▼
+      ┌──────────┐
+      │  merge   │
+      │ integ.   │
+      └──────────┘
 ```
 
-Port `3000` is **API/SSE only**.
+## Repo layout
 
-Then start the graph frontend:
+| Path | Purpose |
+|---|---|
+| [`apps/orchestrator-v2/`](apps/orchestrator-v2/) | Local-first FastAPI daemon. Owns the graph, code/context snapshots, runs, merges, events. SQLite + git as substrate. Pluggable runtime adapters. |
+| [`frontend-v2/`](frontend-v2/) | SvelteKit graph-native UI. Drag-to-merge canvas, node inspector with live runtime output, code diffs, structured context. |
+| [`docs/`](docs/) | Cross-cutting design notes and reviews. |
+| [`.pi/`](.pi/) | Project-local pi extension prompts and skills. |
+
+The previous hackathon stack (Node MVP orchestrator + v1 SvelteKit
+frontend) is preserved on branch [`hackathon-17.04`](#archive).
+
+## Quick start
+
+Run two processes side-by-side.
+
+### 1. Orchestrator daemon
 
 ```bash
-cd frontend
-npm install
-npm run dev
+cd apps/orchestrator-v2
+uv venv .venv --python 3.12
+uv pip install --python .venv/bin/python -e '.[dev]'
+
+# Optional: drop your OpenAI key into apps/orchestrator-v2/.env
+# (see below). Sourcing it makes pi inherit the credentials.
+set -a; source .env; set +a
+
+AOC_V2_HOST=0.0.0.0 \
+AOC_V2_RUNTIME_BACKEND=pi \
+.venv/bin/python -m agentsofchaos_orchestrator_v2.main
 ```
 
-The graph UI will be available on Vite's default dev port, usually:
+Listens on `http://127.0.0.1:8000`. Configurable via `AOC_V2_*` env
+vars; see `apps/orchestrator-v2/src/agentsofchaos_orchestrator_v2/infrastructure/settings.py`.
 
-```text
-http://localhost:5173
-```
-
-### Quick judge demo flow
-
-1. create a single root node
-2. send a prompt to the root
-3. fork it into multiple branches
-4. send different prompts to each branch
-5. merge one branch back into an integration node
-6. show that the original target branch stays untouched while the integration node reflects the merge result
-
-For an automated smoke test when Docker is available:
+### 2. Frontend
 
 ```bash
-cd apps/orchestrator
-npm run e2e
+cd frontend-v2
+bun install   # or npm install
+bun run dev   # or npm run dev
 ```
 
-## What the demo shows
+Open `http://localhost:5173`. The dev server proxies `/api/orchestrator/*`
+to the daemon (override target via `ORCHESTRATOR_V2_BASE_URL`).
 
-- one root agent
-- branch/fork into parallel agent nodes
-- prompt nodes independently
-- merge branches into a new integration node
-- inspect the graph and live agent output in the UI
+## Pi runtime
 
-## Environment
+The default runtime adapter spawns [`pi`](https://github.com/badlogic/pi-mono)
+in RPC mode against your worktree. Pi handles the LLM call, tool use, and
+file edits; the orchestrator captures events, transcripts, and the
+resulting commit.
 
-Main env file for the orchestrated demo:
+Pi reads its provider/model from `~/.pi/agent/settings.json` and
+credentials from environment or `~/.pi/agent/auth.json`. To use plain
+OpenAI with the project's `apps/orchestrator-v2/.env`:
 
-- `apps/orchestrator/.env`
+```jsonc
+// ~/.pi/agent/settings.json
+{ "defaultProvider": "openai", "defaultModel": "gpt-5.4-mini" }
+```
 
-Current default model:
-- `openai/gpt-5.4-mini`
+```dotenv
+# apps/orchestrator-v2/.env
+OPENAI_API_KEY=sk-...
+```
 
-Template:
+Other runtimes (`noop`, `claude_code`, `codex`) are first-class in the
+adapter protocol; only `noop` and `pi` ship today.
 
-- `apps/orchestrator/.env.example`
+## Tests
 
-The `.env` file is gitignored. Because the API key was shared in chat, rotate it after testing.
+```bash
+# Backend
+cd apps/orchestrator-v2 && .venv/bin/python -m pytest tests/ -q
 
-## Notes
+# Frontend
+cd frontend-v2 && npx svelte-check --tsconfig ./tsconfig.json && npm run build
+```
 
-- The orchestrator uses the Docker socket, so treat it as privileged.
-- Worker containers are ephemeral and are removed when the browser websocket disconnects.
-- Fork snapshots are also cleaned up when the session ends.
-- Workers receive secrets like `OPENAI_API_KEY` via environment variables, not baked into the image.
-- Workers now persist pi sessions under `/state/pi-agent` because they no longer run with `--no-session`.
-- The orchestrator now has Docker-exec based helpers for git status, checkpoint commits, git bundle export/import, merge execution, latest-session extraction, and AI-generated merge context writing.
-- Docker is required on the host. I could not test Docker orchestration on this VM because the Docker CLI/socket is not available here.
+## Architecture in one screen
+
+* **Nodes are immutable.** Code and context snapshots are durable; a
+  retry creates a sibling, a merge creates an integration node.
+* **Runs are ephemeral.** They execute in temporary git worktrees and
+  emit a normalized stream of `runtime_event`s.
+* **Merges reconcile from a common ancestor** for both code (real
+  three-way git merge) and context (typed section-by-section merge).
+* **The graph is the product** — not a visualization of hidden state.
+
+Deeper docs:
+- [`apps/orchestrator-v2/docs/manifesto.md`](apps/orchestrator-v2/docs/manifesto.md) — what we believe
+- [`apps/orchestrator-v2/docs/architecture.md`](apps/orchestrator-v2/docs/architecture.md) — system design
+- [`apps/orchestrator-v2/docs/context-model.md`](apps/orchestrator-v2/docs/context-model.md) — first-class context
+- [`apps/orchestrator-v2/docs/runtime-adapters.md`](apps/orchestrator-v2/docs/runtime-adapters.md) — runtime contract
+- [`apps/orchestrator-v2/docs/implementation-plan.md`](apps/orchestrator-v2/docs/implementation-plan.md) — phased build
+- [`apps/orchestrator-v2/docs/adrs/`](apps/orchestrator-v2/docs/adrs/) — decision records
+
+## Archive
+
+The hackathon snapshot — Node MVP orchestrator, v1 SvelteKit frontend,
+pi-worker template, prototype pi-rpc app — lives on branch
+[`hackathon-17.04`](../../tree/hackathon-17.04). This is the snapshot
+that ran on 2026-04-17 and powered the original demo.

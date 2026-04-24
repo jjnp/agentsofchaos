@@ -36,6 +36,9 @@ htmlcov/
 *.sqlite3-wal
 *.sqlite3-shm
 
+# Pi runtime per-user state (project-level prompts/skills under .pi/{prompts,skills}/ are tracked)
+.pi/agent/
+
 # Editor / OS
 .DS_Store
 Thumbs.db
