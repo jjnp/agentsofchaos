@@ -208,6 +208,7 @@
 	function createTerminalOptions(): ITerminalOptions {
 		return {
 			allowTransparency: true,
+			bellStyle: 'none',
 			convertEol: false,
 			cursorBlink: true,
 			cursorInactiveStyle: 'outline',
@@ -231,7 +232,7 @@
 				...termOptions.theme
 			},
 			...termOptions
-		};
+		} as ITerminalOptions & { bellStyle?: 'none' };
 	}
 
 	function sendRaw(payload: OutgoingPayload) {
