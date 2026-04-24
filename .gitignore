@@ -1,27 +1,55 @@
+# Node / SvelteKit
 node_modules/
-**/node_modules/
+.svelte-kit/
+build/
+.vercel/
+.netlify/
+.wrangler/
+storybook-static/
+*storybook.log
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.coverage
+coverage/
+htmlcov/
+
+# Env / secrets
 .env
-**/.env
+.env.local
+.env.*.local
+!.env.example
+
+# Orchestrator-v2 daemon state
+.aoc/
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+*.swo
+
+# Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-.DS_Store
-workspace/.pi/
-workspace/.env
-apps/pi-rpc/workspace/.pi/
-apps/pi-rpc/workspace/.env
 
-# This repo was initialized in /home/J3, so ignore local machine/user files.
-.bash_logout
-.bashrc
-.codex/
-.gitconfig
-.npm/
-.pi/
-.profile
-.ssh/
-.tmux.conf
-readme.md
-.cache/
-example/
+# Test / e2e artifacts
+test-results/
+playwright-report/
+*.egg-info/

@@ -1,0 +1,213 @@
+<script lang="ts">
+	import type { GraphStore } from '$lib/agent-graph/state.svelte';
+	import type { Node, NodeDiff } from '$lib/orchestrator/contracts';
+
+	import DiffFileList from './DiffFileList.svelte';
+	import DiffFileView from './DiffFileView.svelte';
+
+	interface Props {
+		store: GraphStore;
+		node: Node;
+	}
+
+	let { store, node }: Props = $props();
+
+	let loading = $state(false);
+	let error = $state<string | null>(null);
+	let selectedPath = $state<string | null>(null);
+
+	const diff = $derived<NodeDiff | null>(store.diffsByNodeId.get(node.id) ?? null);
+	const selectedFile = $derived(
+		diff?.files.find((file) => file.path === selectedPath) ?? null
+	);
+
+	$effect(() => {
+		const targetNodeId = node.id;
+		if (loading) return;
+		if (store.diffsByNodeId.has(targetNodeId)) return;
+		loading = true;
+		error = null;
+		void store
+			.fetchNodeDiff(targetNodeId)
+			.catch((err: unknown) => {
+				error = err instanceof Error ? err.message : String(err);
+			})
+			.finally(() => {
+				loading = false;
+			});
+	});
+
+	$effect(() => {
+		if (!diff) return;
+		if (selectedPath && diff.files.some((file) => file.path === selectedPath)) return;
+		selectedPath = diff.files[0]?.path ?? null;
+	});
+
+	async function refresh() {
+		loading = true;
+		error = null;
+		try {
+			await store.fetchNodeDiff(node.id, { force: true });
+		} catch (err) {
+			error = err instanceof Error ? err.message : String(err);
+		} finally {
+			loading = false;
+		}
+	}
+</script>
+
+<section class="viewer">
+	<header class="totals">
+		<div class="left">
+			<p class="label">Changes</p>
+			{#if diff}
+				<p class="commit mono">
+					{diff.base_commit_sha ? diff.base_commit_sha.slice(0, 12) : 'empty tree'}
+					→ {diff.head_commit_sha.slice(0, 12)}
+				</p>
+			{:else}
+				<p class="commit mono muted">Diff not loaded.</p>
+			{/if}
+		</div>
+		<div class="totals-grid">
+			<div class="stat">
+				<span class="num">{diff?.totals.files ?? 0}</span>
+				<span class="cap">files</span>
+			</div>
+			<div class="stat add">
+				<span class="num">+{diff?.totals.additions ?? 0}</span>
+				<span class="cap">added</span>
+			</div>
+			<div class="stat del">
+				<span class="num">-{diff?.totals.deletions ?? 0}</span>
+				<span class="cap">removed</span>
+			</div>
+			<button type="button" class="refresh" onclick={refresh} disabled={loading}>
+				{loading ? 'Loading…' : 'Refresh'}
+			</button>
+		</div>
+	</header>
+
+	{#if error}
+		<p class="error">{error}</p>
+	{/if}
+
+	{#if loading && !diff}
+		<p class="loading">Loading diff…</p>
+	{:else if diff && diff.files.length === 0}
+		<p class="empty">No changes between this node and its parent.</p>
+	{:else if diff}
+		<div class="split">
+			<DiffFileList files={diff.files} {selectedPath} onSelect={(path) => (selectedPath = path)} />
+			<DiffFileView file={selectedFile} />
+		</div>
+	{/if}
+</section>
+
+<style>
+	.viewer {
+		display: grid;
+		grid-template-rows: auto auto minmax(0, 1fr);
+		gap: 0.6rem;
+		min-height: 0;
+	}
+	.totals {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 1rem;
+	}
+	.left {
+		display: grid;
+		gap: 0.18rem;
+	}
+	.label {
+		font-size: 0.68rem;
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
+		color: var(--color-text-muted);
+	}
+	.commit {
+		font-size: 0.78rem;
+		color: var(--color-text);
+	}
+	.muted {
+		color: var(--color-text-muted);
+	}
+	.totals-grid {
+		display: flex;
+		gap: 0.45rem;
+		align-items: center;
+	}
+	.stat {
+		display: grid;
+		justify-items: center;
+		min-width: 3.4rem;
+		padding: 0.3rem 0.55rem;
+		border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+		border-radius: 0.7rem;
+		background: color-mix(in srgb, var(--color-surface-elevated) 80%, black);
+	}
+	.stat .num {
+		font-family: var(--font-mono);
+		font-size: 0.85rem;
+		font-weight: 600;
+		color: var(--color-text);
+	}
+	.stat .cap {
+		font-size: 0.6rem;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--color-text-muted);
+	}
+	.stat.add .num {
+		color: var(--color-success);
+	}
+	.stat.del .num {
+		color: var(--color-danger);
+	}
+	.refresh {
+		border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+		background: color-mix(in srgb, var(--color-surface-elevated) 80%, black);
+		color: var(--color-text);
+		border-radius: 999px;
+		padding: 0.5rem 0.8rem;
+		font-size: 0.66rem;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		cursor: pointer;
+	}
+	.refresh:hover:not(:disabled) {
+		border-color: color-mix(in srgb, var(--color-primary) 44%, var(--color-border));
+		color: var(--color-primary);
+	}
+	.refresh:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	.error {
+		color: var(--color-danger);
+		font-size: 0.78rem;
+	}
+	.loading,
+	.empty {
+		color: var(--color-text-muted);
+		font-size: 0.78rem;
+	}
+	.split {
+		display: grid;
+		grid-template-columns: minmax(10rem, 14rem) minmax(0, 1fr);
+		gap: 0.6rem;
+		min-height: 0;
+		overflow: hidden;
+	}
+	.mono {
+		font-family: var(--font-mono);
+	}
+
+	@media (max-width: 1100px) {
+		.split {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>
