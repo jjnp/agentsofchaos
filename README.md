@@ -101,12 +101,21 @@ adapter protocol; only `noop` and `pi` ship today.
 ## Tests
 
 ```bash
-# Backend
+# Backend (unit + HTTP-level integration via FastAPI TestClient)
 cd orchestrator && .venv/bin/python -m pytest tests/ -q
 
-# Frontend
+# Frontend type-check + build
 cd frontend && npx svelte-check --tsconfig ./tsconfig.json && npm run build
+
+# Frontend end-to-end (Playwright drives a real browser against a fresh
+# daemon + dev-server combo — no manual setup required)
+cd frontend && npm run test:e2e
 ```
+
+The Playwright config provisions an isolated git fixture at
+`/tmp/aoc-e2e-repo` and a clean SQLite at `/tmp/aoc-e2e.sqlite3`, then
+spins up the orchestrator daemon (with `runtime_backend=noop`) and the
+Vite dev server before the spec runs.
 
 ## Architecture in one screen
 
@@ -126,6 +135,8 @@ Deeper docs:
 - [`docs/implementation-plan.md`](docs/implementation-plan.md) — phased build
 - [`docs/adrs/`](docs/adrs/) — decision records
 - [`docs/review-2026-04-24-smells.md`](docs/review-2026-04-24-smells.md) — post-integration review (mid-resolution)
+- [`docs/review-2026-04-25-orchestrator-functional-gaps.md`](docs/review-2026-04-25-orchestrator-functional-gaps.md) — backend functional gap review
+- [`docs/continuation-guidance-2026-04-25.md`](docs/continuation-guidance-2026-04-25.md) — handoff guidance for continuing orchestrator work
 - [`orchestrator/AGENT.md`](orchestrator/AGENT.md) — engineering contract for the daemon package
 
 ## Archive

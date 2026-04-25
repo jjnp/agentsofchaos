@@ -26,7 +26,8 @@ dev = [
   "pytest-cov>=5.0,<6.0",
   "ruff>=0.6,<1.0",
   "mypy>=1.11,<2.0",
-  "types-setuptools>=75.0,<76.0"
+  "types-setuptools>=75.0,<76.0",
+  "httpx>=0.27,<1.0"
 ]
 
 [project.scripts]
