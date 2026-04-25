@@ -49,6 +49,7 @@
 	class:status-context-conflicted={node.status === 'context_conflicted'}
 	class:status-both-conflicted={node.status === 'both_conflicted'}
 	class:kind-merge={node.kind === 'merge'}
+	class:kind-resolution={node.kind === 'resolution'}
 	transform="translate({x} {y})"
 	tabindex="0"
 	role="button"

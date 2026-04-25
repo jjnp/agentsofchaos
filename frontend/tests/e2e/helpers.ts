@@ -69,6 +69,28 @@ export async function dragMerge(page: Page, sourceIndex: number, targetIndex: nu
 			`drag-merge: missing bounding box (source=${source ? 'ok' : 'null'}, target=${target ? 'ok' : 'null'})`
 		);
 	}
+	await dragMergeBetween(page, source, target);
+}
+
+/** Same as dragMerge but you supply pre-located source/target locators. */
+export async function dragMergeLocators(
+	page: Page,
+	source: ReturnType<Page['locator']>,
+	target: ReturnType<Page['locator']>
+) {
+	const sourceBox = await source.boundingBox();
+	const targetBox = await target.boundingBox();
+	if (!sourceBox || !targetBox) {
+		throw new Error('drag-merge: missing bounding box');
+	}
+	await dragMergeBetween(page, sourceBox, targetBox);
+}
+
+async function dragMergeBetween(
+	page: Page,
+	source: { x: number; y: number; width: number; height: number },
+	target: { x: number; y: number; width: number; height: number }
+) {
 	const sx = source.x + source.width / 2;
 	const sy = source.y + source.height / 2;
 	const tx = target.x + target.width / 2;
