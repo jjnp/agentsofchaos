@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from agentsofchaos_orchestrator.infrastructure.runtime.base import (
+    ContextItemEdit,
+    ContextResolutionDecision,
     RuntimeAdapter,
     RuntimeCancellationToken,
     RuntimeEvent,
@@ -12,6 +14,8 @@ from agentsofchaos_orchestrator.infrastructure.runtime.noop import NoOpRuntimeAd
 from agentsofchaos_orchestrator.infrastructure.runtime.pi.adapter import PiRuntimeAdapter
 
 __all__ = [
+    "ContextItemEdit",
+    "ContextResolutionDecision",
     "NoOpRuntimeAdapter",
     "PiRuntimeAdapter",
     "RuntimeAdapter",

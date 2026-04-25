@@ -266,7 +266,7 @@ async def test_noop_runtime_adapter_emits_normalized_events(tmp_path: Path) -> N
 
     result = await adapter.execute(request=request, emit=capture)
 
-    assert adapter.runtime_kind is RuntimeKind.CUSTOM
+    assert adapter.runtime_kind is RuntimeKind.NOOP
     assert RuntimeCapability.CANCELLATION in adapter.capabilities
     assert result.summary_text == "No-op prompt execution for: hello"
     assert events == [

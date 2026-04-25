@@ -77,13 +77,18 @@ export default defineConfig({
 	webServer: [
 		{
 			// Backend daemon: noop runtime so tests don't hit OpenAI; isolated sqlite.
-			// Logged to /tmp/aoc-e2e-daemon.log for post-mortem debugging.
-			command: `bash -c 'cd ../orchestrator && AOC_HOST=127.0.0.1 AOC_RUNTIME_BACKEND=noop AOC_DATABASE_URL="sqlite+aiosqlite:///${E2E_DB}" .venv/bin/python -m agentsofchaos_orchestrator.main 2>&1 | tee /tmp/aoc-e2e-daemon.log'`,
+			command: `cd ../orchestrator && AOC_HOST=127.0.0.1 AOC_RUNTIME_BACKEND=noop AOC_DATABASE_URL=sqlite+aiosqlite:///${E2E_DB} .venv/bin/python -m agentsofchaos_orchestrator.main`,
 			url: BACKEND_HEALTH,
 			reuseExistingServer: !process.env['CI'],
+			// "ignore" makes Playwright capture stdout/stderr to its own logs;
+			// here we forward to a known file via the shell instead.
 			stdout: 'pipe',
 			stderr: 'pipe',
-			timeout: 60_000
+			timeout: 60_000,
+			env: {
+				...process.env,
+				PYTHONUNBUFFERED: '1'
+			}
 		},
 		{
 			command: `npm run dev -- --port ${FRONTEND_PORT} --strictPort`,

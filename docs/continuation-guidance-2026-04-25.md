@@ -103,7 +103,7 @@ PYTHONPATH=. uv run pytest -q
 passes:
 
 ```text
-23 passed
+31 passed
 ```
 
 Plain `uv run pytest` fails because tests import `tests.helpers` and `tests/` is not currently a package. Either add `tests/__init__.py`, adjust imports, or keep `PYTHONPATH=.` until this is fixed.
@@ -131,7 +131,10 @@ This currently reduces to a small set of substantive typing issues, including:
 - `ArtifactRecorder._persist_artifacts` run id optionality mismatch
 - `RunSupervisor` accepting `Awaitable` where `asyncio.create_task` wants a coroutine
 - pi process protocol mismatch with `asyncio.subprocess.Process`
-- report JSON indexing in tests without narrowing
+- fake pi process factory test type mismatch
+- payload invariance in event recording helpers
+- missing local annotations in run-state artifact handling
+- repository/UoW helper calls returning `Any` in merge snapshot lookups
 
 Do not interpret mypy's larger default output as purely application problems; some is invocation/package-path configuration.
 
@@ -162,23 +165,26 @@ Merges can produce conflicted merge nodes, but there is no backend workflow to r
 Needed:
 
 - typed conflict models
-- code conflict resolution API
-- context conflict resolution API
-- validation/finalization
+- agent-driven resolution prompt-run API
+- runtime prompt/context injection for merge conflict evidence
+- code validation/finalization after the agent edits the worktree
+- context-resolution projection from agent evidence
 - provenance for resolution decisions
-- clear decision: mutate conflicted node status or create successor resolution node
+- successor-node creation
 
 ### 2. Conflicted code snapshot semantics
 
-Current code merge behavior can commit conflict-marker files into a `code_conflicted` merge node.
+ADR 0008 now decides this: conflicted merge attempts create immutable graph nodes. A code-conflicted merge node's code snapshot is a `conflicted_workspace`, not a clean `integration` snapshot, and it may contain conflict markers. A context-conflicted merge node's context snapshot is a `conflicted_context_candidate`, not clean reconciled context.
 
-This may be acceptable as a durable conflicted workspace snapshot, but it must be an explicit architecture decision.
+The default resolution policy is `successor_node`: resolving conflicts should create a successor node with its own code/context snapshots and provenance rather than silently rewriting the original conflicted merge node. ADR 0009 defines this successor-node resolution model.
 
-Decide:
+Remaining work:
 
-- Are conflicted code snapshots allowed to contain conflict markers?
-- Are they integration snapshots or conflicted workspace snapshots?
-- What creates the eventual clean integrated snapshot?
+- harden the first-cut agent-driven successor resolution run flow
+- add API/integration coverage for the resolution-run endpoint
+- deepen context-resolution projection from runtime evidence
+- preserve structured resolution decisions as provenance
+- make the UI clearly distinguish conflicted workspace snapshots from clean integrations
 
 ### 3. Context projection maturity
 
@@ -254,16 +260,15 @@ Needed before calling local-first storage mature:
 
 Do not broaden features randomly. Recommended sequence:
 
-1. Decide and document conflicted merge semantics.
-2. Implement backend merge conflict resolution or a clear resolution-node model.
-3. Add typed conflict/report domain models.
-4. Build `PiContextProjector` and projection report artifacts.
-5. Add context diff API.
-6. Make cancellation durable and inspectable.
-7. Add artifact listing/metadata/content APIs.
-8. Tighten outbox replay semantics.
-9. Add state integrity checks.
-10. Then clean ruff/mypy baselines.
+1. Harden the first-cut backend merge conflict resolution prompt-run flow.
+2. Mature the first-cut typed conflict/report domain models into structured resolution reports.
+3. Build `PiContextProjector` and projection report artifacts.
+4. Add context diff API.
+5. Make cancellation durable and inspectable.
+6. Add artifact listing/metadata/content APIs.
+7. Tighten outbox replay semantics.
+8. Add state integrity checks.
+9. Then clean ruff/mypy baselines.
 
 ## Files worth reading first
 

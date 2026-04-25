@@ -119,7 +119,10 @@
 		left: 0;
 		width: min(24rem, 80vw);
 		pointer-events: auto;
-		z-index: 15;
+		/* Above .canvas-controls (z-index: 20). The popover anchors to the
+		   selected node and can land under the side panel when nodes drift
+		   right; keep its Send button reachable. */
+		z-index: 25;
 		padding: 0.55rem 0.6rem 0.55rem 0.65rem;
 		display: grid;
 		gap: 0.5rem;

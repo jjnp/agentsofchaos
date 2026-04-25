@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from typing import Any
-
 from agentsofchaos_orchestrator.domain.enums import (
+    CodeMergeSnapshotRole,
     ContextItemStatus,
+    ContextMergeSnapshotRole,
     EventTopic,
+    MergeResolutionPolicy,
     NodeKind,
     NodeStatus,
     RunStatus,
@@ -90,6 +92,9 @@ class MergeResponse(ApiModel):
     ancestor_node_id: UUID
     code_conflicts: tuple[str, ...]
     context_conflicts: tuple[dict[str, object], ...]
+    code_snapshot_role: CodeMergeSnapshotRole
+    context_snapshot_role: ContextMergeSnapshotRole
+    resolution_policy: MergeResolutionPolicy
     report_path: str
 
 
@@ -225,3 +230,32 @@ class NodeDiffResponse(ApiModel):
     head_commit_sha: str
     totals: DiffTotalsResponse
     files: tuple[FileDiffResponse, ...]
+
+
+class ContextItemDiffResponse(ApiModel):
+    item_id: UUID
+    change_type: str  # 'added' | 'removed' | 'changed'
+    before: ContextItemResponse | None
+    after: ContextItemResponse | None
+
+
+class ContextSectionDiffResponse(ApiModel):
+    section: str
+    additions: int
+    removals: int
+    changes: int
+    items: tuple[ContextItemDiffResponse, ...]
+
+
+class ContextDiffTotalsResponse(ApiModel):
+    additions: int
+    removals: int
+    changes: int
+
+
+class ContextDiffResponse(ApiModel):
+    node_id: UUID
+    base_snapshot_id: UUID | None
+    head_snapshot_id: UUID
+    totals: ContextDiffTotalsResponse
+    sections: tuple[ContextSectionDiffResponse, ...]

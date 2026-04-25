@@ -37,8 +37,8 @@
 		const out: TerminalLine[] = [];
 		for (const event of store.events) {
 			if (event.topic !== 'runtime_event') continue;
-			if (event.payload['runId'] !== runId) continue;
-			const runtime = event.payload['runtimeEvent'];
+			if (event.payload['run_id'] !== runId) continue;
+			const runtime = event.payload['runtime_event'];
 			if (!runtime || typeof runtime !== 'object') continue;
 			const r = runtime as Record<string, unknown>;
 			const kind = typeof r['kind'] === 'string' ? (r['kind'] as string) : '';

@@ -333,7 +333,7 @@ The first merge implementation resolves the nearest common graph ancestor, verif
 
 Merge reports are retrievable through the API and include source/target/ancestor snapshot ids, changed files, git stdout/stderr, conflicted file paths, conflict marker previews where available, index stage metadata, and context conflict records.
 
-Conflict handling is intentionally conservative. Conflicted merge nodes are durable graph nodes, but richer browser UX and manual conflict resolution remain future work.
+Conflict handling is intentionally conservative. Conflicted merge nodes are durable graph nodes, but richer browser UX and deeper context-resolution projection remain future work. ADR 0008 defines conflicted merge snapshot semantics: a code-conflicted node's code snapshot is a conflicted workspace snapshot, not a clean integration snapshot; a context-conflicted node's context snapshot is a conflicted context candidate, not clean reconciled context. ADR 0009 defines resolution as a prompt-driven runtime flow: an agent resolves conflicts in an ephemeral run and creates a successor node with its own provenance rather than silently rewriting the original conflicted merge node. The first backend slice exposes this as a resolution prompt run from a conflicted merge node and records a resolution report artifact.
 
 ## 9.5 Run lifecycle policy
 

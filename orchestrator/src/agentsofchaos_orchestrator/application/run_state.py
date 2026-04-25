@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agentsofchaos_orchestrator.application.artifacts import ArtifactRecorder
 from agentsofchaos_orchestrator.application.eventing import ApplicationEventRecorder
-from agentsofchaos_orchestrator.domain.enums import EventTopic, RunStatus, RuntimeKind
+from agentsofchaos_orchestrator.domain.enums import EventTopic, NodeKind, RunStatus, RuntimeKind
 from agentsofchaos_orchestrator.domain.models import (
     CodeSnapshot,
     ContextSnapshot,
@@ -63,10 +63,10 @@ class RunStateService:
             project_id=project.id,
             topic=EventTopic.RUN_CREATED,
             payload={
-                "projectId": str(project.id),
-                "runId": str(run.id),
-                "sourceNodeId": str(source_node.id),
-                "plannedChildNodeId": str(child_node_id),
+                "project_id": str(project.id),
+                "run_id": str(run.id),
+                "source_node_id": str(source_node.id),
+                "planned_child_node_id": str(child_node_id),
                 "prompt": prompt,
             },
             created_at=created_at,
@@ -80,9 +80,9 @@ class RunStateService:
             project_id=running_run.project_id,
             topic=EventTopic.RUN_STARTED,
             payload={
-                "projectId": str(running_run.project_id),
-                "runId": str(running_run.id),
-                "worktreePath": str(worktree_path),
+                "project_id": str(running_run.project_id),
+                "run_id": str(running_run.id),
+                "worktree_path": str(worktree_path),
             },
             created_at=started_at,
         )
@@ -93,7 +93,6 @@ class RunStateService:
         *,
         running_run: Run,
         child_node: Node,
-        source_node: Node,
         child_code_snapshot: CodeSnapshot,
         child_context_snapshot: ContextSnapshot,
         committed_sha: str,
@@ -108,10 +107,9 @@ class RunStateService:
             finished_at=self._now(),
         )
         succeeded_run = await self.persist_run(succeeded_run)
-        await self._record_prompt_node_created(
+        await self._record_child_node_created(
             succeeded_run=succeeded_run,
             child_node=child_node,
-            source_node=source_node,
             child_code_snapshot=child_code_snapshot,
             child_context_snapshot=child_context_snapshot,
             committed_sha=committed_sha,
@@ -130,12 +128,12 @@ class RunStateService:
             project_id=succeeded_run.project_id,
             topic=EventTopic.RUN_SUCCEEDED,
             payload={
-                "projectId": str(succeeded_run.project_id),
-                "runId": str(succeeded_run.id),
-                "childNodeId": str(child_node.id),
-                "transcriptPath": str(transcript_path),
-                "artifactIds": [str(artifact.id) for artifact in artifacts],
-                "runtimeMetadata": runtime_metadata,
+                "project_id": str(succeeded_run.project_id),
+                "run_id": str(succeeded_run.id),
+                "child_node_id": str(child_node.id),
+                "transcript_path": str(transcript_path),
+                "artifact_ids": [str(artifact.id) for artifact in artifacts],
+                "runtime_metadata": runtime_metadata,
             },
             created_at=succeeded_run.finished_at or child_created_at,
         )
@@ -168,11 +166,11 @@ class RunStateService:
             project_id=cancelled_run.project_id,
             topic=EventTopic.RUN_CANCELLED,
             payload={
-                "projectId": str(cancelled_run.project_id),
-                "runId": str(cancelled_run.id),
+                "project_id": str(cancelled_run.project_id),
+                "run_id": str(cancelled_run.id),
                 "cancelled": True,
-                "transcriptPath": str(transcript_path) if transcript_path is not None else None,
-                "artifactIds": [str(artifact.id) for artifact in artifacts],
+                "transcript_path": str(transcript_path) if transcript_path is not None else None,
+                "artifact_ids": [str(artifact.id) for artifact in artifacts],
             },
             created_at=cancelled_run.finished_at or self._now(),
         )
@@ -189,8 +187,8 @@ class RunStateService:
             project_id=failed_run.project_id,
             topic=EventTopic.RUN_FAILED,
             payload={
-                "projectId": str(failed_run.project_id),
-                "runId": str(failed_run.id),
+                "project_id": str(failed_run.project_id),
+                "run_id": str(failed_run.id),
                 "error": str(error),
             },
             created_at=failed_run.finished_at or self._now(),
@@ -207,12 +205,11 @@ class RunStateService:
             await unit_of_work.commit()
             return persisted
 
-    async def _record_prompt_node_created(
+    async def _record_child_node_created(
         self,
         *,
         succeeded_run: Run,
         child_node: Node,
-        source_node: Node,
         child_code_snapshot: CodeSnapshot,
         child_context_snapshot: ContextSnapshot,
         committed_sha: str,
@@ -221,16 +218,20 @@ class RunStateService:
     ) -> None:
         await self._events.record_and_publish(
             project_id=succeeded_run.project_id,
-            topic=EventTopic.PROMPT_NODE_CREATED,
+            topic=(
+                EventTopic.RESOLUTION_NODE_CREATED
+                if child_node.kind is NodeKind.RESOLUTION
+                else EventTopic.PROMPT_NODE_CREATED
+            ),
             payload={
-                "projectId": str(succeeded_run.project_id),
-                "runId": str(succeeded_run.id),
-                "nodeId": str(child_node.id),
-                "parentNodeId": str(source_node.id),
-                "codeSnapshotId": str(child_code_snapshot.id),
-                "contextSnapshotId": str(child_context_snapshot.id),
-                "commitSha": committed_sha,
-                "gitRef": git_ref,
+                "project_id": str(succeeded_run.project_id),
+                "run_id": str(succeeded_run.id),
+                "node_id": str(child_node.id),
+                "parent_node_ids": [str(parent_id) for parent_id in child_node.parent_node_ids],
+                "code_snapshot_id": str(child_code_snapshot.id),
+                "context_snapshot_id": str(child_context_snapshot.id),
+                "commit_sha": committed_sha,
+                "git_ref": git_ref,
                 "title": child_node.title,
             },
             created_at=child_created_at,

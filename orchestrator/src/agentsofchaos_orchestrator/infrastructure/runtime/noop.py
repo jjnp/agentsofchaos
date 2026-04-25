@@ -12,7 +12,7 @@ from agentsofchaos_orchestrator.infrastructure.runtime.base import (
 class NoOpRuntimeAdapter:
     @property
     def runtime_kind(self) -> RuntimeKind:
-        return RuntimeKind.CUSTOM
+        return RuntimeKind.NOOP
 
     @property
     def capabilities(self) -> frozenset[RuntimeCapability]:
@@ -29,7 +29,7 @@ class NoOpRuntimeAdapter:
             RuntimeEvent(
                 kind="runtime.started",
                 message="No-op runtime started.",
-                payload={"worktreePath": str(request.worktree_path)},
+                payload={"worktree_path": str(request.worktree_path)},
             )
         )
         await emit(

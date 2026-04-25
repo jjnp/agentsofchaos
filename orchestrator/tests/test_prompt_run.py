@@ -112,13 +112,13 @@ async def test_prompt_run_creates_child_node_commit_and_events(tmp_path: Path) -
 
     runtime_events = [event for event in events if event.topic is EventTopic.RUNTIME_EVENT]
     assert len(runtime_events) == 1
-    assert runtime_events[0].payload["runId"] == str(run.id)
-    assert runtime_events[0].payload["runtimeKind"] == RuntimeKind.CUSTOM.value
+    assert runtime_events[0].payload["run_id"] == str(run.id)
+    assert runtime_events[0].payload["runtime_kind"] == RuntimeKind.CUSTOM.value
 
     artifact_events = [event for event in events if event.topic is EventTopic.ARTIFACT_CREATED]
     assert len(artifact_events) == 1
     assert artifact_events[0].payload["kind"] == "runtime_transcript"
-    assert artifact_events[0].payload["runId"] == str(run.id)
+    assert artifact_events[0].payload["run_id"] == str(run.id)
 
     daemon_state_dir = settings.daemon_state_dir_for_project(repository_root.resolve())
     worktree_path = daemon_state_dir / "worktrees" / str(run.id)

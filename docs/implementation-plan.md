@@ -134,7 +134,11 @@ Deliverables:
 - merge reports and conflict artifacts — first cut implemented
 - integration node creation — first cut implemented
 - independent code/context conflict classification — first cut implemented
-- richer conflict UX and manual resolution — pending
+- conflicted merge snapshot semantics — implemented/documented in ADR 0008
+- typed merge report/conflict domain models — first cut implemented
+- agent-driven successor-node conflict resolution model — documented in ADR 0009
+- agent-driven resolution run backend/API — first cut implemented
+- richer conflict UX and deeper context-resolution projection — pending
 - merge report retrieval endpoint — implemented
 - code conflict detail capture — implemented
 

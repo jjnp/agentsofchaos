@@ -8,6 +8,7 @@ class NodeKind(StrEnum):
     PROMPT = "prompt"
     FORK = "fork"
     MERGE = "merge"
+    RESOLUTION = "resolution"
     IMPORT = "import"
     MANUAL = "manual"
 
@@ -22,6 +23,20 @@ class NodeStatus(StrEnum):
     BOTH_CONFLICTED = "both_conflicted"
 
 
+class CodeMergeSnapshotRole(StrEnum):
+    INTEGRATION = "integration"
+    CONFLICTED_WORKSPACE = "conflicted_workspace"
+
+
+class ContextMergeSnapshotRole(StrEnum):
+    MERGED_CONTEXT = "merged_context"
+    CONFLICTED_CONTEXT_CANDIDATE = "conflicted_context_candidate"
+
+
+class MergeResolutionPolicy(StrEnum):
+    SUCCESSOR_NODE = "successor_node"
+
+
 class RunStatus(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
@@ -31,6 +46,7 @@ class RunStatus(StrEnum):
 
 
 class RuntimeKind(StrEnum):
+    NOOP = "noop"
     LOCAL_SUBPROCESS = "local_subprocess"
     PI = "pi"
     CLAUDE_CODE = "claude_code"
@@ -57,12 +73,31 @@ class ContextItemStatus(StrEnum):
     CONFLICTED = "conflicted"
 
 
+class ContextSection(StrEnum):
+    GOALS = "goals"
+    CONSTRAINTS = "constraints"
+    DECISIONS = "decisions"
+    ASSUMPTIONS = "assumptions"
+    OPEN_QUESTIONS = "open_questions"
+    TODOS = "todos"
+    RISKS = "risks"
+    HANDOFF_NOTES = "handoff_notes"
+
+
+class ContextResolutionChoice(StrEnum):
+    SOURCE = "source"
+    TARGET = "target"
+    ANCESTOR = "ancestor"
+    SYNTHESIZED = "synthesized"
+
+
 class ArtifactKind(StrEnum):
     RUNTIME_TRANSCRIPT = "runtime_transcript"
     RUNTIME_SESSION = "runtime_session"
     CONTEXT_PROJECTION_REPORT = "context_projection_report"
     MERGE_REPORT = "merge_report"
     DIFF_SUMMARY = "diff_summary"
+    RESOLUTION_REPORT = "resolution_report"
     RUNTIME_STDERR = "runtime_stderr"
     RAW_RUNTIME_EVENT_LOG = "raw_runtime_event_log"
 
@@ -79,3 +114,4 @@ class EventTopic(StrEnum):
     ARTIFACT_CREATED = "artifact_created"
     PROMPT_NODE_CREATED = "prompt_node_created"
     MERGE_NODE_CREATED = "merge_node_created"
+    RESOLUTION_NODE_CREATED = "resolution_node_created"

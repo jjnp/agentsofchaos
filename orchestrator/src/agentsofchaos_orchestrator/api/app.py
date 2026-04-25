@@ -13,6 +13,7 @@ from agentsofchaos_orchestrator.domain.errors import (
     GitOperationError,
     InvalidRepositoryError,
     MergeAncestorError,
+    MergeInvalidNodesError,
     NodeNotFoundError,
     ProjectNotFoundError,
     RootNodeAlreadyExistsError,
@@ -140,6 +141,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(
             status_code=409,
             content={"error": {"code": "MERGE_ANCESTOR_ERROR", "message": str(error)}},
+        )
+
+    @app.exception_handler(MergeInvalidNodesError)
+    async def handle_merge_invalid_nodes_error(
+        _request: Request,
+        error: MergeInvalidNodesError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=422,
+            content={"error": {"code": "MERGE_INVALID_NODES", "message": str(error)}},
         )
 
     @app.exception_handler(GitOperationError)

@@ -15,6 +15,11 @@ from agentsofchaos_orchestrator.api.dependencies import (
 )
 from agentsofchaos_orchestrator.api.schemas import (
     CodeSnapshotResponse,
+    ContextDiffResponse,
+    ContextDiffTotalsResponse,
+    ContextItemDiffResponse,
+    ContextItemResponse,
+    ContextSectionDiffResponse,
     ContextSnapshotResponse,
     DiffHunkResponse,
     DiffLineResponse,
@@ -32,6 +37,7 @@ from agentsofchaos_orchestrator.api.schemas import (
     PromptRunRequest,
     RunResponse,
 )
+from agentsofchaos_orchestrator.application.context_diff import ContextDiff, ContextItemDiff
 from agentsofchaos_orchestrator.application.diffs import FileDiff, NodeDiff
 from agentsofchaos_orchestrator.application.services import OrchestratorService
 from agentsofchaos_orchestrator.domain.errors import NodeNotFoundError, RunNotFoundError
@@ -159,6 +165,57 @@ async def get_node_diff(
     return _node_diff_to_response(diff)
 
 
+def _context_item_diff_to_response(item: ContextItemDiff) -> ContextItemDiffResponse:
+    return ContextItemDiffResponse(
+        item_id=item.item_id,
+        change_type=item.change_type,
+        before=ContextItemResponse.model_validate(item.before.model_dump())
+        if item.before is not None
+        else None,
+        after=ContextItemResponse.model_validate(item.after.model_dump())
+        if item.after is not None
+        else None,
+    )
+
+
+def _context_diff_to_response(diff: ContextDiff) -> ContextDiffResponse:
+    sections = tuple(
+        ContextSectionDiffResponse(
+            section=section.section.value,
+            additions=section.additions,
+            removals=section.removals,
+            changes=section.changes,
+            items=tuple(_context_item_diff_to_response(item) for item in section.items),
+        )
+        for section in diff.sections
+    )
+    totals = ContextDiffTotalsResponse(
+        additions=sum(section.additions for section in sections),
+        removals=sum(section.removals for section in sections),
+        changes=sum(section.changes for section in sections),
+    )
+    return ContextDiffResponse(
+        node_id=diff.node_id,
+        base_snapshot_id=diff.base_snapshot_id,
+        head_snapshot_id=diff.head_snapshot_id,
+        totals=totals,
+        sections=sections,
+    )
+
+
+@router.get(
+    "/{project_id}/nodes/{node_id}/context-diff",
+    response_model=ContextDiffResponse,
+)
+async def get_node_context_diff(
+    project_id: UUID,
+    node_id: UUID,
+    service: OrchestratorService = Depends(get_orchestrator_service),
+) -> ContextDiffResponse:
+    diff = await service.get_node_context_diff(project_id=project_id, node_id=node_id)
+    return _context_diff_to_response(diff)
+
+
 @router.post(
     "/{project_id}/nodes/{node_id}/runs/prompt",
     response_model=RunResponse,
@@ -194,7 +251,12 @@ async def merge_nodes(
         node=NodeResponse.from_domain(result.node),
         ancestor_node_id=result.ancestor_node.id,
         code_conflicts=result.code_conflicts,
-        context_conflicts=result.context_conflicts,
+        context_conflicts=tuple(
+            conflict.model_dump(mode="json") for conflict in result.context_conflicts
+        ),
+        code_snapshot_role=result.code_snapshot_role,
+        context_snapshot_role=result.context_snapshot_role,
+        resolution_policy=result.resolution_policy,
         report_path=str(result.report_path),
     )
 
@@ -210,6 +272,25 @@ async def get_merge_report(
 ) -> MergeReportResponse:
     report = await service.get_merge_report(project_id=project_id, node_id=node_id)
     return MergeReportResponse(report=report)
+
+
+@router.post(
+    "/{project_id}/merges/{node_id}/resolution-runs/prompt",
+    response_model=RunResponse,
+    status_code=201,
+)
+async def prompt_merge_resolution(
+    project_id: UUID,
+    node_id: UUID,
+    request: PromptRunRequest,
+    service: OrchestratorService = Depends(get_orchestrator_service),
+) -> RunResponse:
+    run = await service.start_merge_resolution_prompt_run(
+        project_id=project_id,
+        merge_node_id=node_id,
+        prompt=request.prompt,
+    )
+    return RunResponse.from_domain(run)
 
 
 @router.get("/{project_id}/runs/{run_id}", response_model=RunResponse)

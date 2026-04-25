@@ -158,14 +158,56 @@ def test_unknown_snapshot_returns_404(client: TestClient, repo: Path) -> None:
     assert r.json()["error"]["code"] == "SNAPSHOT_NOT_FOUND"
 
 
-def test_merge_same_node_is_409(client: TestClient, repo: Path) -> None:
+def test_context_diff_endpoint_returns_section_diff(
+    client: TestClient, repo: Path
+) -> None:
+    project_id = client.post("/projects/open", json={"path": str(repo)}).json()["id"]
+    root = client.post(f"/projects/{project_id}/nodes/root").json()
+
+    # Drive a prompt run so the daemon's noop runtime produces a child snapshot
+    # whose context differs from the root's (added goal + handoff_note).
+    prompt_run = client.post(
+        f"/projects/{project_id}/nodes/{root['id']}/runs/prompt",
+        json={"prompt": "context-diff probe"},
+    )
+    assert prompt_run.status_code == 201, prompt_run.text
+
+    # Poll the graph until the child node materialises (run runs async).
+    child_id: str | None = None
+    for _ in range(80):
+        graph = client.get(f"/projects/{project_id}/graph").json()
+        for node in graph["nodes"]:
+            if node["kind"] == "prompt":
+                child_id = node["id"]
+                break
+        if child_id is not None:
+            break
+        import time
+
+        time.sleep(0.05)
+    assert child_id is not None, "child node never appeared"
+
+    diff = client.get(f"/projects/{project_id}/nodes/{child_id}/context-diff")
+    assert diff.status_code == 200, diff.text
+    body = diff.json()
+    assert body["node_id"] == child_id
+    assert body["base_snapshot_id"] is not None
+    sections = {section["section"]: section for section in body["sections"]}
+    # Goals gets the user prompt as a new item; handoff_notes gets the handoff
+    # note. Both should report at least one addition.
+    assert sections["goals"]["additions"] >= 1
+    assert sections["handoff_notes"]["additions"] >= 1
+    assert body["totals"]["additions"] == sum(
+        section["additions"] for section in body["sections"]
+    )
+
+
+def test_merge_same_node_is_422(client: TestClient, repo: Path) -> None:
     project_id = client.post("/projects/open", json={"path": str(repo)}).json()["id"]
     root = client.post(f"/projects/{project_id}/nodes/root").json()
     r = client.post(
         f"/projects/{project_id}/merges",
         json={"source_node_id": root["id"], "target_node_id": root["id"]},
     )
-    assert r.status_code == 409
-    # See docs/review-2026-04-24-smells.md §8 — this code name is misleading
-    # but pinned here so any future fix is intentional.
-    assert r.json()["error"]["code"] == "MERGE_ANCESTOR_ERROR"
+    assert r.status_code == 422
+    assert r.json()["error"]["code"] == "MERGE_INVALID_NODES"

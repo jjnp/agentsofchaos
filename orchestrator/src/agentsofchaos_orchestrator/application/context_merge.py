@@ -7,6 +7,7 @@ from uuid import UUID
 
 from agentsofchaos_orchestrator.domain.enums import ContextItemStatus
 from agentsofchaos_orchestrator.domain.models import (
+    ContextConflict,
     ContextItem,
     ContextSnapshot,
     FileReference,
@@ -18,7 +19,7 @@ from agentsofchaos_orchestrator.domain.models import (
 @dataclass(frozen=True)
 class ContextMergeResult:
     snapshot: ContextSnapshot
-    conflicts: tuple[dict[str, object], ...]
+    conflicts: tuple[ContextConflict, ...]
 
 
 class ContextMergeService:
@@ -37,7 +38,7 @@ class ContextMergeService:
         merge_node_id: UUID,
         created_at: datetime,
     ) -> ContextMergeResult:
-        conflicts: list[dict[str, object]] = []
+        conflicts: list[ContextConflict] = []
         goals = self._merge_items("goals", ancestor.goals, source.goals, target.goals, conflicts)
         constraints = self._merge_items(
             "constraints",
@@ -122,7 +123,7 @@ class ContextMergeService:
         ancestor_items: tuple[ContextItem, ...],
         source_items: tuple[ContextItem, ...],
         target_items: tuple[ContextItem, ...],
-        conflicts: list[dict[str, object]],
+        conflicts: list[ContextConflict],
     ) -> tuple[ContextItem, ...]:
         ancestor_by_id = {item.id: item for item in ancestor_items}
         source_by_id = {item.id: item for item in source_items}
@@ -144,7 +145,7 @@ class ContextMergeService:
         ancestor: ContextItem | None,
         source: ContextItem | None,
         target: ContextItem | None,
-        conflicts: list[dict[str, object]],
+        conflicts: list[ContextConflict],
     ) -> ContextItem | None:
         if ancestor is None:
             if source is not None and target is not None and source != target:
@@ -171,14 +172,17 @@ class ContextMergeService:
         item_id: UUID,
         source: ContextItem | None,
         target: ContextItem | None,
-    ) -> dict[str, object]:
-        return {
-            "kind": "context_item_conflict",
-            "section": section,
-            "itemId": str(item_id),
-            "source": source.model_dump(mode="json") if source is not None else None,
-            "target": target.model_dump(mode="json") if target is not None else None,
-        }
+    ) -> ContextConflict:
+        return ContextConflict(
+            section=section,
+            item_id=item_id,
+            source=source,
+            target=target,
+            explanation=(
+                f"Source and target both changed context item {item_id} "
+                f"in section {section!r} in incompatible ways."
+            ),
+        )
 
     def _ordered_item_ids(
         self,

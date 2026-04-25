@@ -274,8 +274,8 @@ class PiRuntimeAdapter:
                 kind="runtime.session_cloned",
                 message="Pi session cloned from source node session.",
                 payload={
-                    "sourceNodeId": str(source_node_id),
-                    "sourceSessionFile": str(source_session_path),
+                    "source_node_id": str(source_node_id),
+                    "source_session_file": str(source_session_path),
                 },
             )
         )

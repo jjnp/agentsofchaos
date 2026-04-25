@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from agentsofchaos_orchestrator.application.context_merge import ContextMergeService
@@ -12,7 +12,7 @@ def test_context_merge_marks_divergent_item_edits_as_conflicted() -> None:
     project_id = uuid4()
     ancestor_node_id = uuid4()
     item_id = uuid4()
-    timestamp = datetime.now(timezone.utc)
+    timestamp = datetime.now(UTC)
     ancestor_item = ContextItem(
         id=item_id,
         text="use sqlite",
@@ -62,7 +62,7 @@ def test_context_merge_accepts_one_sided_item_edit() -> None:
     project_id = uuid4()
     ancestor_node_id = uuid4()
     item_id = uuid4()
-    timestamp = datetime.now(timezone.utc)
+    timestamp = datetime.now(UTC)
     ancestor_item = ContextItem(
         id=item_id,
         text="ship locally first",

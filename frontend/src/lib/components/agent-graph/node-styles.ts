@@ -13,6 +13,8 @@ export function nodeKindColorVar(kind: NodeKind): string {
 			return 'var(--color-kind-fork)';
 		case 'merge':
 			return 'var(--color-kind-merge)';
+		case 'resolution':
+			return 'var(--color-kind-merge)';
 		case 'import':
 			return 'var(--color-kind-import)';
 		case 'manual':

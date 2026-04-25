@@ -78,10 +78,10 @@ class ApplicationEventRecorder:
     ) -> None:
         created_at = self._now()
         payload = {
-            "projectId": str(project_id),
-            "runId": str(run_id),
-            "runtimeKind": runtime_kind.value,
-            "runtimeEvent": event.model_dump(mode="json"),
+            "project_id": str(project_id),
+            "run_id": str(run_id),
+            "runtime_kind": runtime_kind.value,
+            "runtime_event": event.model_dump(mode="json"),
         }
         if not event.durable:
             await self._outbox.publish_live(

@@ -243,6 +243,7 @@ export class GraphStore {
 			case 'root_node_created':
 			case 'prompt_node_created':
 			case 'merge_node_created':
+			case 'resolution_node_created':
 				this.#touchGraphFromEvent();
 				break;
 			case 'run_created':
@@ -305,7 +306,6 @@ export class GraphStore {
 }
 
 function extractRunId(event: EventRecord): RunId | null {
-	// Event payloads use camelCase keys (while the wrapper uses snake_case).
-	const candidate = event.payload['runId'];
+	const candidate = event.payload['run_id'];
 	return typeof candidate === 'string' ? (candidate as RunId) : null;
 }

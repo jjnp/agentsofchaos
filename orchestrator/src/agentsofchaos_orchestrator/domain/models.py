@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -18,7 +18,7 @@ from agentsofchaos_orchestrator.domain.enums import (
 
 
 class DomainModel(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, populate_by_name=True)
 
 
 class ContextItem(DomainModel):
@@ -40,11 +40,20 @@ class SymbolReference(DomainModel):
     kind: str = Field(min_length=1)
 
 
+class ContextConflict(DomainModel):
+    kind: Literal["context_item_conflict"] = "context_item_conflict"
+    section: str = Field(min_length=1)
+    item_id: UUID
+    source: ContextItem | None = None
+    target: ContextItem | None = None
+    explanation: str = Field(min_length=1)
+
+
 class MergeMetadata(DomainModel):
     ancestor_context_snapshot_id: UUID
     source_context_snapshot_id: UUID
     target_context_snapshot_id: UUID
-    conflicts: tuple[dict[str, Any], ...] = ()
+    conflicts: tuple[ContextConflict, ...] = ()
     strategy_version: str = Field(min_length=1)
 
 

@@ -9,7 +9,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from agentsofchaos_orchestrator.domain.enums import RuntimeCapability, RuntimeKind
+from agentsofchaos_orchestrator.domain.enums import (
+    ContextResolutionChoice,
+    ContextSection,
+    RuntimeCapability,
+    RuntimeKind,
+)
 from agentsofchaos_orchestrator.domain.errors import RuntimeCancelledError
 from agentsofchaos_orchestrator.domain.models import ContextSnapshot, Node
 
@@ -25,10 +30,37 @@ class RuntimeEvent(RuntimeModel):
     durable: bool = True
 
 
+class ContextItemEdit(RuntimeModel):
+    """Mutation a runtime asks the projection to apply to the child snapshot.
+
+    If `item_id` matches an existing item in `section`, that item's text is
+    replaced. Otherwise, a new item with that id is appended. This is the
+    only mechanism by which a runtime can target an inherited context item
+    — without it, projections only ever add fresh items, so divergent edits
+    never collide and merges never see context conflicts.
+    """
+
+    section: ContextSection
+    item_id: UUID
+    text: str = Field(min_length=1)
+
+
+class ContextResolutionDecision(RuntimeModel):
+    """How a resolution-run chose to resolve a single context conflict."""
+
+    section: ContextSection
+    item_id: UUID
+    chosen: ContextResolutionChoice
+    text: str = Field(min_length=1)
+    rationale: str = ""
+
+
 class RuntimeExecutionResult(RuntimeModel):
     transcript_text: str
     summary_text: str
     metadata: dict[str, object] = Field(default_factory=dict)
+    context_edits: tuple[ContextItemEdit, ...] = ()
+    context_resolutions: tuple[ContextResolutionDecision, ...] = ()
 
 
 class RuntimeCancellationToken:

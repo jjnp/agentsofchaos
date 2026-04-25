@@ -1,20 +1,26 @@
 """Unit coverage for the merge status classifier.
 
-End-to-end coverage of CONTEXT_CONFLICTED and BOTH_CONFLICTED currently requires
-the context projection service to produce divergent context items across sibling
-runs, which it does not yet do (see context_projection.py — every run adds fresh
-items with new UUIDs). These tests cover the classifier function in isolation so
-status derivation is pinned independently of projection maturity.
+End-to-end coverage of CONTEXT_CONFLICTED now lives in test_merge_flow.py, driven
+by runtimes that emit ContextItemEdit. These tests still exercise the classifier
+in isolation so status derivation stays pinned to its inputs and not to upstream
+projection behaviour.
 """
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from agentsofchaos_orchestrator.application.merges import _merge_status
 from agentsofchaos_orchestrator.domain.enums import NodeStatus
+from agentsofchaos_orchestrator.domain.models import ContextConflict
 
 
-def _conflict(section: str = "goals") -> dict[str, object]:
-    return {"kind": "context_item_conflict", "section": section}
+def _conflict(section: str = "goals") -> ContextConflict:
+    return ContextConflict(
+        section=section,
+        item_id=uuid4(),
+        explanation=f"Conflicting {section} item.",
+    )
 
 
 def test_merge_status_clean() -> None:

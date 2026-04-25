@@ -76,7 +76,7 @@ async def test_create_root_node_persists_graph_and_event(tmp_path: Path) -> None
     assert len(graph.nodes) == 1
     assert graph.nodes[0].id == node.id
     assert events[-1].topic is EventTopic.ROOT_NODE_CREATED
-    assert events[-1].payload["nodeId"] == str(node.id)
+    assert events[-1].payload["node_id"] == str(node.id)
 
     root_ref = run_git(repository_root, "rev-parse", f"refs/aoc/nodes/{node.id}")
     head_ref = run_git(repository_root, "rev-parse", "HEAD")

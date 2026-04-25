@@ -23,7 +23,7 @@ export type ContextSnapshotId = v.InferOutput<typeof contextSnapshotIdSchema>;
 export const eventIdSchema = brandedUuid('EventId');
 export type EventId = v.InferOutput<typeof eventIdSchema>;
 
-export const nodeKinds = ['root', 'prompt', 'fork', 'merge', 'import', 'manual'] as const;
+export const nodeKinds = ['root', 'prompt', 'fork', 'merge', 'resolution', 'import', 'manual'] as const;
 export type NodeKind = (typeof nodeKinds)[number];
 export const nodeKindSchema = v.picklist(nodeKinds);
 
@@ -43,7 +43,23 @@ export const runStatuses = ['queued', 'running', 'succeeded', 'failed', 'cancell
 export type RunStatus = (typeof runStatuses)[number];
 export const runStatusSchema = v.picklist(runStatuses);
 
+export const codeMergeSnapshotRoles = ['integration', 'conflicted_workspace'] as const;
+export type CodeMergeSnapshotRole = (typeof codeMergeSnapshotRoles)[number];
+export const codeMergeSnapshotRoleSchema = v.picklist(codeMergeSnapshotRoles);
+
+export const contextMergeSnapshotRoles = [
+	'merged_context',
+	'conflicted_context_candidate'
+] as const;
+export type ContextMergeSnapshotRole = (typeof contextMergeSnapshotRoles)[number];
+export const contextMergeSnapshotRoleSchema = v.picklist(contextMergeSnapshotRoles);
+
+export const mergeResolutionPolicies = ['successor_node'] as const;
+export type MergeResolutionPolicy = (typeof mergeResolutionPolicies)[number];
+export const mergeResolutionPolicySchema = v.picklist(mergeResolutionPolicies);
+
 export const runtimeKinds = [
+	'noop',
 	'local_subprocess',
 	'pi',
 	'claude_code',
@@ -64,7 +80,8 @@ export const eventTopics = [
 	'runtime_event',
 	'artifact_created',
 	'prompt_node_created',
-	'merge_node_created'
+	'merge_node_created',
+	'resolution_node_created'
 ] as const;
 export type EventTopic = (typeof eventTopics)[number];
 export const eventTopicSchema = v.picklist(eventTopics);
@@ -158,6 +175,9 @@ export const mergeResponseSchema = v.object({
 	ancestor_node_id: nodeIdSchema,
 	code_conflicts: v.array(v.string()),
 	context_conflicts: v.array(v.record(v.string(), v.unknown())),
+	code_snapshot_role: codeMergeSnapshotRoleSchema,
+	context_snapshot_role: contextMergeSnapshotRoleSchema,
+	resolution_policy: mergeResolutionPolicySchema,
 	report_path: v.string()
 });
 export type MergeResponse = v.InferOutput<typeof mergeResponseSchema>;

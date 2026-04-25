@@ -88,26 +88,18 @@ Missing capabilities:
 
 Until this exists, conflicted merge nodes are durable evidence, but not an actionable merge workflow.
 
-### 2. Conflicted code merge semantics are unresolved
+### 2. Conflicted code merge semantics are now explicit, but resolution is still missing
 
-The current merge flow commits the worktree even when git reports unmerged files. This means a `code_conflicted` merge node may point at a git commit containing conflict markers.
+ADR 0008 records the product decision: a `code_conflicted` merge node may point at a code snapshot containing conflict markers. That snapshot is a durable `conflicted_workspace`, not a clean `integration` snapshot and not guaranteed to build or run.
 
-That may be acceptable if the intended meaning is:
+ADR 0008 defines the default resolution policy as `successor_node`, and ADR 0009 expands that policy: resolving conflicts should create a successor node with its own code/context snapshots and provenance rather than silently rewriting the original conflicted node.
 
-> A conflicted code snapshot is a durable snapshot of the conflicted merge workspace.
+Remaining gaps:
 
-But it is not acceptable if the intended meaning is:
-
-> Every code snapshot is a buildable or semantically integrated project state.
-
-This needs an explicit product/architecture decision.
-
-At minimum, the model should distinguish:
-
-- clean integration commit
-- conflicted merge workspace snapshot
-- conflict report artifact
-- resolved merge successor
+- backend resolution flow
+- resolved-code validation
+- context-resolution decision capture
+- UI distinction between conflicted workspace snapshots and clean integration snapshots
 
 ### 3. Context merge is structurally present but still shallow
 
@@ -328,26 +320,27 @@ Local-first reduces risk but does not remove it.
 
 Do not add broad new product surface before stabilizing these areas.
 
-### Priority 1 — decide conflicted merge semantics
+### Priority 1 — implement merge conflict resolution
 
-Answer explicitly:
+ADR 0008 has decided conflicted merge semantics, and ADR 0009 has decided the successor-node resolution model. Resolution must be agent-driven: the user supplies prompt intent, and a runtime adapter performs the code/context resolution in an ephemeral resolution run.
 
-- Is a conflicted merge node allowed to have a git commit containing conflict markers?
-- Is that code snapshot considered a conflicted workspace snapshot or an integration snapshot?
-- Does resolving conflicts mutate the merge node status or create a successor node?
+First-cut backend pieces now exist for an agent-driven resolution prompt-run API, conflict-evidence prompt injection, post-run code validation, successor node creation, and a resolution report artifact. Remaining backend pieces:
 
-Document the decision and align implementation to it.
+- API/integration coverage for the resolution-run endpoint
+- richer typed resolution report models
+- context-resolution projection from runtime evidence
+- structured resolution-decision provenance
+- runtime-specific resolution quality improvements, especially for pi
 
-### Priority 2 — implement merge conflict resolution
+### Priority 2 — mature typed merge reports
 
-Needed backend pieces:
+First-cut typed merge report/conflict domain models now exist. Remaining backend pieces:
 
-- typed conflict models
-- code conflict resolution API
-- context conflict resolution API
-- validation and finalization
-- resolution provenance
-- merge report update or successor report artifact
+- use typed report models throughout resolution APIs
+- expose stable typed report DTOs instead of generic report dictionaries
+- add richer context conflict records with ancestor/source/target item groups
+- add typed resolution result reports
+- remove remaining loose dictionaries from core merge state
 
 ### Priority 3 — build real context projection
 

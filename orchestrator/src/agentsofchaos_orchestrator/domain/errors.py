@@ -37,6 +37,11 @@ class MergeAncestorError(OrchestratorError):
     """Raised when nodes cannot be merged from a valid common ancestor."""
 
 
+class MergeInvalidNodesError(OrchestratorError):
+    """Raised when merge inputs fail validation (e.g. source==target,
+    resolution against a non-merge or non-conflicted node)."""
+
+
 class RuntimeExecutionError(OrchestratorError):
     """Raised when a runtime adapter cannot complete a run successfully."""
 

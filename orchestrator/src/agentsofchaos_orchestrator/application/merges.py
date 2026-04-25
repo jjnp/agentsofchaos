@@ -15,16 +15,29 @@ from agentsofchaos_orchestrator.application.context_merge import ContextMergeSer
 from agentsofchaos_orchestrator.application.eventing import ApplicationEventRecorder
 from agentsofchaos_orchestrator.domain.enums import (
     ArtifactKind,
+    CodeMergeSnapshotRole,
+    ContextMergeSnapshotRole,
     EventTopic,
+    MergeResolutionPolicy,
     NodeKind,
     NodeStatus,
 )
 from agentsofchaos_orchestrator.domain.errors import (
     MergeAncestorError,
+    MergeInvalidNodesError,
     NodeNotFoundError,
+)
+from agentsofchaos_orchestrator.domain.merge import (
+    CodeConflictFile,
+    CodeConflictStage,
+    CodeMergeReport,
+    ContextMergeReport,
+    MergeReport,
+    MergeSnapshotSemantics,
 )
 from agentsofchaos_orchestrator.domain.models import (
     CodeSnapshot,
+    ContextConflict,
     ContextSnapshot,
     Node,
     Project,
@@ -39,7 +52,10 @@ class MergeNodeResult:
     node: Node
     ancestor_node: Node
     code_conflicts: tuple[str, ...]
-    context_conflicts: tuple[dict[str, object], ...]
+    context_conflicts: tuple[ContextConflict, ...]
+    code_snapshot_role: CodeMergeSnapshotRole
+    context_snapshot_role: ContextMergeSnapshotRole
+    resolution_policy: MergeResolutionPolicy
     report_path: Path
 
 
@@ -115,6 +131,9 @@ class MergeApplicationService:
                 code_conflicts=merge_result.conflicted_files,
                 context_conflicts=context_result.conflicts,
             )
+            code_snapshot_role = _code_snapshot_role(merge_result.conflicted_files)
+            context_snapshot_role = _context_snapshot_role(context_result.conflicts)
+            resolution_policy = MergeResolutionPolicy.SUCCESSOR_NODE
             committed_sha = self._git_service.commit_all(
                 worktree_path,
                 message=f"aoc merge node {merge_node_id}",
@@ -151,6 +170,9 @@ class MergeApplicationService:
                 committed_sha=committed_sha,
                 git_ref=ref_name,
                 merge_result=merge_result,
+                code_snapshot_role=code_snapshot_role,
+                context_snapshot_role=context_snapshot_role,
+                resolution_policy=resolution_policy,
                 context_conflicts=context_result.conflicts,
                 changed_files=changed_files,
             )
@@ -168,19 +190,22 @@ class MergeApplicationService:
                 project_id=project_id,
                 topic=EventTopic.MERGE_NODE_CREATED,
                 payload={
-                    "projectId": str(project_id),
-                    "nodeId": str(node.id),
-                    "sourceNodeId": str(inputs.source_node.id),
-                    "targetNodeId": str(inputs.target_node.id),
-                    "ancestorNodeId": str(inputs.ancestor_node.id),
-                    "codeSnapshotId": str(code_snapshot.id),
-                    "contextSnapshotId": str(context_result.snapshot.id),
-                    "commitSha": committed_sha,
-                    "gitRef": ref_name,
+                    "project_id": str(project_id),
+                    "node_id": str(node.id),
+                    "source_node_id": str(inputs.source_node.id),
+                    "target_node_id": str(inputs.target_node.id),
+                    "ancestor_node_id": str(inputs.ancestor_node.id),
+                    "code_snapshot_id": str(code_snapshot.id),
+                    "context_snapshot_id": str(context_result.snapshot.id),
+                    "commit_sha": committed_sha,
+                    "git_ref": ref_name,
                     "status": node.status.value,
-                    "codeConflicts": list(merge_result.conflicted_files),
-                    "contextConflictCount": len(context_result.conflicts),
-                    "mergeReportArtifactId": str(artifact.id) if artifact is not None else None,
+                    "code_conflicts": list(merge_result.conflicted_files),
+                    "context_conflict_count": len(context_result.conflicts),
+                    "code_snapshot_role": code_snapshot_role.value,
+                    "context_snapshot_role": context_snapshot_role.value,
+                    "resolution_policy": resolution_policy.value,
+                    "merge_report_artifact_id": str(artifact.id) if artifact is not None else None,
                 },
                 created_at=timestamp,
             )
@@ -189,6 +214,9 @@ class MergeApplicationService:
                 ancestor_node=inputs.ancestor_node,
                 code_conflicts=merge_result.conflicted_files,
                 context_conflicts=context_result.conflicts,
+                code_snapshot_role=code_snapshot_role,
+                context_snapshot_role=context_snapshot_role,
+                resolution_policy=resolution_policy,
                 report_path=report_path,
             )
         finally:
@@ -233,7 +261,7 @@ class MergeApplicationService:
             if target_node is None:
                 raise NodeNotFoundError(f"Unknown target node: {target_node_id}")
             if source_node.id == target_node.id:
-                raise MergeAncestorError("Cannot merge a node with itself")
+                raise MergeInvalidNodesError("Cannot merge a node with itself")
             ancestor_node = _nearest_common_ancestor(source_node, target_node, nodes_by_id)
             source_code = await _require_code_snapshot(unit_of_work, source_node)
             target_code = await _require_code_snapshot(unit_of_work, target_node)
@@ -434,7 +462,7 @@ def _context_snapshot_descends_from(
 def _merge_status(
     *,
     code_conflicts: tuple[str, ...],
-    context_conflicts: tuple[dict[str, object], ...],
+    context_conflicts: tuple[ContextConflict, ...],
 ) -> NodeStatus:
     has_code_conflicts = bool(code_conflicts)
     has_context_conflicts = bool(context_conflicts)
@@ -445,6 +473,20 @@ def _merge_status(
     if has_context_conflicts:
         return NodeStatus.CONTEXT_CONFLICTED
     return NodeStatus.READY
+
+
+def _code_snapshot_role(code_conflicts: tuple[str, ...]) -> CodeMergeSnapshotRole:
+    if code_conflicts:
+        return CodeMergeSnapshotRole.CONFLICTED_WORKSPACE
+    return CodeMergeSnapshotRole.INTEGRATION
+
+
+def _context_snapshot_role(
+    context_conflicts: tuple[ContextConflict, ...],
+) -> ContextMergeSnapshotRole:
+    if context_conflicts:
+        return ContextMergeSnapshotRole.CONFLICTED_CONTEXT_CANDIDATE
+    return ContextMergeSnapshotRole.MERGED_CONTEXT
 
 
 def _default_merge_title(source_node: Node, target_node: Node) -> str:
@@ -460,49 +502,73 @@ def _merge_report(
     committed_sha: str,
     git_ref: str,
     merge_result: GitMergeResult,
-    context_conflicts: tuple[dict[str, object], ...],
+    code_snapshot_role: CodeMergeSnapshotRole,
+    context_snapshot_role: ContextMergeSnapshotRole,
+    resolution_policy: MergeResolutionPolicy,
+    context_conflicts: tuple[ContextConflict, ...],
     changed_files: tuple[str, ...],
-) -> dict[str, object]:
-    return {
-        "mergeNodeId": str(node.id),
-        "status": node.status.value,
-        "sourceNodeId": str(inputs.source_node.id),
-        "targetNodeId": str(inputs.target_node.id),
-        "ancestorNodeId": str(inputs.ancestor_node.id),
-        "sourceCodeSnapshotId": str(inputs.source_code.id),
-        "targetCodeSnapshotId": str(inputs.target_code.id),
-        "ancestorCodeSnapshotId": str(inputs.ancestor_code.id),
-        "mergedCodeSnapshotId": str(code_snapshot.id),
-        "sourceContextSnapshotId": str(inputs.source_context.id),
-        "targetContextSnapshotId": str(inputs.target_context.id),
-        "ancestorContextSnapshotId": str(inputs.ancestor_context.id),
-        "mergedContextSnapshotId": str(context_snapshot.id),
-        "commitSha": committed_sha,
-        "gitRef": git_ref,
-        "codeMerge": {
-            "clean": merge_result.clean,
-            "conflictedFiles": list(merge_result.conflicted_files),
-            "conflictDetails": [
-                {
-                    "path": detail.path,
-                    "markerCount": detail.marker_count,
-                    "preview": detail.preview,
-                    "stages": list(detail.stages),
-                }
+) -> MergeReport:
+    return MergeReport(
+        merge_node_id=node.id,
+        status=node.status,
+        source_node_id=inputs.source_node.id,
+        target_node_id=inputs.target_node.id,
+        ancestor_node_id=inputs.ancestor_node.id,
+        source_code_snapshot_id=inputs.source_code.id,
+        target_code_snapshot_id=inputs.target_code.id,
+        ancestor_code_snapshot_id=inputs.ancestor_code.id,
+        merged_code_snapshot_id=code_snapshot.id,
+        source_context_snapshot_id=inputs.source_context.id,
+        target_context_snapshot_id=inputs.target_context.id,
+        ancestor_context_snapshot_id=inputs.ancestor_context.id,
+        merged_context_snapshot_id=context_snapshot.id,
+        commit_sha=committed_sha,
+        git_ref=git_ref,
+        snapshot_semantics=MergeSnapshotSemantics(
+            code_snapshot_role=code_snapshot_role,
+            context_snapshot_role=context_snapshot_role,
+            resolution_policy=resolution_policy,
+        ),
+        code_merge=CodeMergeReport(
+            clean=merge_result.clean,
+            snapshot_role=code_snapshot_role,
+            contains_conflict_markers=any(
+                detail.marker_count > 0 for detail in merge_result.conflict_details
+            ),
+            resolution_required=bool(merge_result.conflicted_files),
+            conflicted_files=merge_result.conflicted_files,
+            conflict_details=tuple(
+                CodeConflictFile(
+                    path=detail.path,
+                    marker_count=detail.marker_count,
+                    preview=detail.preview,
+                    stages=tuple(
+                        CodeConflictStage(
+                            mode=stage["mode"],
+                            object_sha=stage["objectSha"],
+                            stage=stage["stage"],
+                            path=stage["path"],
+                        )
+                        for stage in detail.stages
+                    ),
+                )
                 for detail in merge_result.conflict_details
-            ],
-            "changedFiles": list(changed_files),
-            "stdout": merge_result.stdout,
-            "stderr": merge_result.stderr,
-        },
-        "contextMerge": {
-            "strategyVersion": ContextMergeService.strategy_version,
-            "conflictCount": len(context_conflicts),
-            "conflicts": list(context_conflicts),
-        },
-    }
+            ),
+            changed_files=changed_files,
+            stdout=merge_result.stdout,
+            stderr=merge_result.stderr,
+        ),
+        context_merge=ContextMergeReport(
+            strategy_version=ContextMergeService.strategy_version,
+            snapshot_role=context_snapshot_role,
+            resolution_required=bool(context_conflicts),
+            conflict_count=len(context_conflicts),
+            conflicts=context_conflicts,
+        ),
+    )
 
 
-def _write_json(path: Path, payload: dict[str, object]) -> None:
+def _write_json(path: Path, payload: MergeReport) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    data = payload.model_dump(mode="json")
+    path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")

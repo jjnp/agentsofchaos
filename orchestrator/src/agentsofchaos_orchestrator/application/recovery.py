@@ -98,8 +98,8 @@ class StartupRecoveryService:
                 project_id=persisted.project_id,
                 topic=EventTopic.RUN_CANCELLED,
                 payload={
-                    "projectId": str(persisted.project_id),
-                    "runId": str(persisted.id),
+                    "project_id": str(persisted.project_id),
+                    "run_id": str(persisted.id),
                     "cancelled": True,
                     "recovered": True,
                     "reason": "stale queued run during startup recovery",
@@ -124,8 +124,8 @@ class StartupRecoveryService:
                 project_id=persisted.project_id,
                 topic=EventTopic.RUN_FAILED,
                 payload={
-                    "projectId": str(persisted.project_id),
-                    "runId": str(persisted.id),
+                    "project_id": str(persisted.project_id),
+                    "run_id": str(persisted.id),
                     "error": error_message,
                     "recovered": True,
                     "reason": "interrupted running run during startup recovery",

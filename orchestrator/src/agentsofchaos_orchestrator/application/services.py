@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agentsofchaos_orchestrator.application.artifacts import ArtifactRecorder
+from agentsofchaos_orchestrator.application.context_diff import (
+    ContextDiff,
+    ContextDiffApplicationService,
+)
 from agentsofchaos_orchestrator.application.diffs import DiffApplicationService, NodeDiff
 from agentsofchaos_orchestrator.application.eventing import ApplicationEventRecorder
 from agentsofchaos_orchestrator.application.merges import (
@@ -48,7 +52,7 @@ class OrchestratorService:
         now: Callable[[], datetime] | None = None,
         new_uuid: Callable[[], UUID] | None = None,
     ) -> None:
-        clock = now or (lambda: datetime.now(timezone.utc))
+        clock = now or (lambda: datetime.now(UTC))
         uuid_factory = new_uuid or uuid4
         runtime = runtime_adapter or NoOpRuntimeAdapter()
         events = ApplicationEventRecorder(
@@ -103,6 +107,10 @@ class OrchestratorService:
             git_service=git_service,
             queries=self._queries,
         )
+        self._context_diffs = ContextDiffApplicationService(
+            session_factory=session_factory,
+            queries=self._queries,
+        )
 
     async def start_background_workers(self) -> None:
         await self._outbox_worker.start()
@@ -128,6 +136,34 @@ class OrchestratorService:
 
     async def start_prompt_run(self, node_id: UUID, prompt: str) -> Run:
         return await self._runs.start_prompt_run(node_id=node_id, prompt=prompt)
+
+    async def run_merge_resolution_prompt(
+        self,
+        *,
+        project_id: UUID,
+        merge_node_id: UUID,
+        prompt: str,
+        title: str | None = None,
+    ) -> tuple[Run, Node]:
+        return await self._runs.run_merge_resolution_prompt(
+            project_id=project_id,
+            merge_node_id=merge_node_id,
+            prompt=prompt,
+            title=title,
+        )
+
+    async def start_merge_resolution_prompt_run(
+        self,
+        *,
+        project_id: UUID,
+        merge_node_id: UUID,
+        prompt: str,
+    ) -> Run:
+        return await self._runs.start_merge_resolution_prompt_run(
+            project_id=project_id,
+            merge_node_id=merge_node_id,
+            prompt=prompt,
+        )
 
     async def merge_nodes(
         self,
@@ -176,6 +212,13 @@ class OrchestratorService:
 
     async def get_node_diff(self, *, project_id: UUID, node_id: UUID) -> NodeDiff:
         return await self._diffs.get_node_diff(project_id=project_id, node_id=node_id)
+
+    async def get_node_context_diff(
+        self, *, project_id: UUID, node_id: UUID
+    ) -> ContextDiff:
+        return await self._context_diffs.get_node_context_diff(
+            project_id=project_id, node_id=node_id
+        )
 
     async def get_graph(self, project_id: UUID) -> GraphSnapshot:
         return await self._queries.get_graph(project_id)

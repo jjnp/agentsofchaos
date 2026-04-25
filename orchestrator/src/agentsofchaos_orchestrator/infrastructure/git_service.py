@@ -42,6 +42,13 @@ class GitMergeResult:
 GitErrorT = TypeVar("GitErrorT", bound=Exception)
 
 
+def _contains_conflict_marker(content: str) -> bool:
+    return any(
+        line.startswith(("<<<<<<< ", "=======", ">>>>>>> "))
+        for line in content.splitlines()
+    )
+
+
 class GitService:
     def inspect_repository(self, candidate_path: Path) -> GitRepositoryInfo:
         normalized_path = candidate_path.expanduser().resolve(strict=True)
@@ -230,6 +237,31 @@ class GitService:
             preview=content[:4000],
             stages=stages,
         )
+
+    def files_with_conflict_markers(
+        self,
+        worktree_path: Path,
+        *,
+        relative_paths: tuple[str, ...] | None = None,
+    ) -> tuple[str, ...]:
+        if relative_paths is None:
+            output = self._git_text(
+                worktree_path,
+                "ls-files",
+                error_type=GitOperationError,
+            )
+            paths = tuple(line for line in output.splitlines() if line)
+        else:
+            paths = relative_paths
+        conflicted: list[str] = []
+        for relative_path in paths:
+            file_path = worktree_path / relative_path
+            if not file_path.is_file():
+                continue
+            content = file_path.read_text(encoding="utf-8", errors="replace")
+            if _contains_conflict_marker(content):
+                conflicted.append(relative_path)
+        return tuple(conflicted)
 
     def _conflict_stages(
         self,
