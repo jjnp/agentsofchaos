@@ -29,6 +29,11 @@ class RunNotFoundError(OrchestratorError):
     """Raised when a run identifier cannot be resolved."""
 
 
+class ArtifactNotFoundError(OrchestratorError):
+    """Raised when an artifact identifier cannot be resolved or does
+    not belong to the requested project."""
+
+
 class GitOperationError(OrchestratorError):
     """Raised when a git command fails or a git invariant is broken."""
 

@@ -5,8 +5,8 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import FileResponse, StreamingResponse
 
 from agentsofchaos_orchestrator.api.dependencies import (
     get_event_bus,
@@ -14,6 +14,8 @@ from agentsofchaos_orchestrator.api.dependencies import (
     get_settings,
 )
 from agentsofchaos_orchestrator.api.schemas import (
+    ArtifactListResponse,
+    ArtifactResponse,
     CodeSnapshotResponse,
     ContextDiffResponse,
     ContextDiffTotalsResponse,
@@ -359,4 +361,59 @@ async def stream_project_events(
         event_generator(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
+
+
+def _artifact_to_response(artifact: object) -> ArtifactResponse:
+    return ArtifactResponse.model_validate(artifact.model_dump())  # type: ignore[attr-defined]
+
+
+@router.get(
+    "/{project_id}/artifacts",
+    response_model=ArtifactListResponse,
+)
+async def list_artifacts(
+    project_id: UUID,
+    node_id: UUID | None = Query(default=None),
+    run_id: UUID | None = Query(default=None),
+    service: OrchestratorService = Depends(get_orchestrator_service),
+) -> ArtifactListResponse:
+    artifacts = await service.list_artifacts(
+        project_id, node_id=node_id, run_id=run_id
+    )
+    return ArtifactListResponse(
+        artifacts=tuple(_artifact_to_response(artifact) for artifact in artifacts),
+    )
+
+
+@router.get(
+    "/{project_id}/artifacts/{artifact_id}",
+    response_model=ArtifactResponse,
+)
+async def get_artifact(
+    project_id: UUID,
+    artifact_id: UUID,
+    service: OrchestratorService = Depends(get_orchestrator_service),
+) -> ArtifactResponse:
+    artifact = await service.get_artifact(
+        project_id=project_id, artifact_id=artifact_id
+    )
+    return _artifact_to_response(artifact)
+
+
+@router.get(
+    "/{project_id}/artifacts/{artifact_id}/content",
+)
+async def get_artifact_content(
+    project_id: UUID,
+    artifact_id: UUID,
+    service: OrchestratorService = Depends(get_orchestrator_service),
+) -> FileResponse:
+    artifact = await service.get_artifact(
+        project_id=project_id, artifact_id=artifact_id
+    )
+    return FileResponse(
+        path=artifact.path,
+        media_type=artifact.media_type,
+        filename=Path(artifact.path).name,
     )

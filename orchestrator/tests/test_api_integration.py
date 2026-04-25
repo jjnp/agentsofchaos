@@ -140,6 +140,60 @@ def test_full_root_prompt_flow(client: TestClient, repo: Path) -> None:
     assert root_id in child["parent_node_ids"]
 
 
+def test_artifacts_list_and_fetch(client: TestClient, repo: Path) -> None:
+    """The full prompt flow records at least a runtime transcript artifact;
+    the listing + content endpoints surface it for the frontend."""
+    project_id = client.post("/projects/open", json={"path": str(repo)}).json()["id"]
+    root = client.post(f"/projects/{project_id}/nodes/root").json()
+    run = client.post(
+        f"/projects/{project_id}/nodes/{root['id']}/runs/prompt",
+        json={"prompt": "artifact probe"},
+    ).json()
+    # Wait for the run to complete (artifact is recorded on success).
+    final_run = run
+    for _ in range(80):
+        final_run = client.get(f"/projects/{project_id}/runs/{run['id']}").json()
+        if final_run["status"] in {"succeeded", "failed", "cancelled"}:
+            break
+    assert final_run["status"] == "succeeded"
+
+    listed = client.get(f"/projects/{project_id}/artifacts")
+    assert listed.status_code == 200
+    artifacts = listed.json()["artifacts"]
+    transcripts = [a for a in artifacts if a["kind"] == "runtime_transcript"]
+    assert transcripts, f"expected at least one transcript artifact, got: {artifacts}"
+
+    # Filtering by run_id narrows the result.
+    by_run = client.get(
+        f"/projects/{project_id}/artifacts",
+        params={"run_id": final_run["id"]},
+    ).json()["artifacts"]
+    assert by_run and all(a["run_id"] == final_run["id"] for a in by_run)
+
+    # Single fetch returns the same shape.
+    single = client.get(
+        f"/projects/{project_id}/artifacts/{transcripts[0]['id']}"
+    ).json()
+    assert single["id"] == transcripts[0]["id"]
+
+    # Content streaming returns the actual file bytes.
+    content = client.get(
+        f"/projects/{project_id}/artifacts/{transcripts[0]['id']}/content"
+    )
+    assert content.status_code == 200
+    # Noop runtime transcript shape: USER:/ASSISTANT: lines.
+    assert "USER:" in content.text or "ASSISTANT:" in content.text
+
+
+def test_unknown_artifact_returns_404(client: TestClient, repo: Path) -> None:
+    project_id = client.post("/projects/open", json={"path": str(repo)}).json()["id"]
+    r = client.get(
+        f"/projects/{project_id}/artifacts/00000000-0000-0000-0000-000000000000"
+    )
+    assert r.status_code == 404
+    assert r.json()["error"]["code"] == "ARTIFACT_NOT_FOUND"
+
+
 def test_unknown_project_returns_404(client: TestClient) -> None:
     r = client.get("/projects/00000000-0000-0000-0000-000000000000/graph")
     assert r.status_code == 404

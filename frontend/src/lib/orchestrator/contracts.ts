@@ -424,3 +424,43 @@ export const resolutionPromptRequestSchema = v.object({
 	prompt: v.pipe(v.string(), v.minLength(1))
 });
 export type ResolutionPromptRequest = v.InferOutput<typeof resolutionPromptRequestSchema>;
+
+// --- Artifacts ----------------------------------------------------------
+
+export const artifactIdSchema = brandedUuid('ArtifactId');
+export type ArtifactId = v.InferOutput<typeof artifactIdSchema>;
+
+export const artifactKinds = [
+	'runtime_transcript',
+	'runtime_session',
+	'context_projection_report',
+	'merge_report',
+	'diff_summary',
+	'resolution_report',
+	'runtime_stderr',
+	'raw_runtime_event_log'
+] as const;
+export type ArtifactKind = (typeof artifactKinds)[number];
+// Accept any string and narrow at the UI; new ArtifactKinds added on the
+// backend shouldn't break the listing.
+export const artifactKindSchema = v.string();
+
+export const artifactSchema = v.object({
+	id: artifactIdSchema,
+	project_id: projectIdSchema,
+	run_id: v.nullish(runIdSchema),
+	node_id: v.nullish(nodeIdSchema),
+	kind: artifactKindSchema,
+	path: v.string(),
+	media_type: v.string(),
+	sha256: v.string(),
+	size_bytes: v.number(),
+	artifact_metadata: v.record(v.string(), v.unknown()),
+	created_at: isoTimestampSchema
+});
+export type Artifact = v.InferOutput<typeof artifactSchema>;
+
+export const artifactListResponseSchema = v.object({
+	artifacts: v.array(artifactSchema)
+});
+export type ArtifactListResponse = v.InferOutput<typeof artifactListResponseSchema>;

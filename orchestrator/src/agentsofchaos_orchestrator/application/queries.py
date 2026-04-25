@@ -5,12 +5,14 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agentsofchaos_orchestrator.domain.errors import (
+    ArtifactNotFoundError,
     NodeNotFoundError,
     ProjectNotFoundError,
     RunNotFoundError,
     SnapshotNotFoundError,
 )
 from agentsofchaos_orchestrator.domain.models import (
+    Artifact,
     CodeSnapshot,
     ContextSnapshot,
     EventRecord,
@@ -78,3 +80,29 @@ class QueryService:
             if project is None:
                 raise ProjectNotFoundError(f"Unknown project: {project_id}")
             return await unit_of_work.events.list_by_project(project_id)
+
+    async def list_artifacts(
+        self,
+        project_id: UUID,
+        *,
+        node_id: UUID | None = None,
+        run_id: UUID | None = None,
+    ) -> tuple[Artifact, ...]:
+        async with self._unit_of_work() as unit_of_work:
+            project = await unit_of_work.projects.get(project_id)
+            if project is None:
+                raise ProjectNotFoundError(f"Unknown project: {project_id}")
+            return await unit_of_work.artifacts.list_by_project(
+                project_id, node_id=node_id, run_id=run_id
+            )
+
+    async def get_artifact(
+        self, *, project_id: UUID, artifact_id: UUID
+    ) -> Artifact:
+        async with self._unit_of_work() as unit_of_work:
+            artifact = await unit_of_work.artifacts.get(artifact_id)
+            if artifact is None or artifact.project_id != project_id:
+                raise ArtifactNotFoundError(
+                    f"Artifact {artifact_id} does not belong to project {project_id}"
+                )
+            return artifact

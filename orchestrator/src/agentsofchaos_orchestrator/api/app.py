@@ -10,6 +10,7 @@ from agentsofchaos_orchestrator.api.routes.health import router as health_router
 from agentsofchaos_orchestrator.api.routes.projects import router as projects_router
 from agentsofchaos_orchestrator.application.services import OrchestratorService
 from agentsofchaos_orchestrator.domain.errors import (
+    ArtifactNotFoundError,
     GitOperationError,
     InvalidRepositoryError,
     MergeAncestorError,
@@ -128,6 +129,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(
             status_code=404,
             content={"error": {"code": "RUN_NOT_FOUND", "message": str(error)}},
+        )
+
+    @app.exception_handler(ArtifactNotFoundError)
+    async def handle_artifact_not_found(
+        _request: Request,
+        error: ArtifactNotFoundError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=404,
+            content={"error": {"code": "ARTIFACT_NOT_FOUND", "message": str(error)}},
         )
 
     @app.exception_handler(RootNodeAlreadyExistsError)

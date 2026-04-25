@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from agentsofchaos_orchestrator.domain.enums import (
+    ArtifactKind,
     CodeMergeSnapshotRole,
     ContextItemStatus,
     ContextMergeSnapshotRole,
@@ -261,3 +262,21 @@ class ContextDiffResponse(ApiModel):
     head_snapshot_id: UUID
     totals: ContextDiffTotalsResponse
     sections: tuple[ContextSectionDiffResponse, ...]
+
+
+class ArtifactResponse(ApiModel):
+    id: UUID
+    project_id: UUID
+    run_id: UUID | None
+    node_id: UUID | None
+    kind: ArtifactKind
+    path: str
+    media_type: str
+    sha256: str
+    size_bytes: int
+    artifact_metadata: dict[str, Any]
+    created_at: datetime
+
+
+class ArtifactListResponse(ApiModel):
+    artifacts: tuple[ArtifactResponse, ...]

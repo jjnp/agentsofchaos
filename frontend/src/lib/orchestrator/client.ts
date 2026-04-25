@@ -1,6 +1,8 @@
 import * as v from 'valibot';
 
 import {
+	artifactListResponseSchema,
+	artifactSchema,
 	codeSnapshotSchema,
 	contextDiffSchema,
 	contextSnapshotSchema,
@@ -14,6 +16,9 @@ import {
 	nodeSchema,
 	projectSchema,
 	runSchema,
+	type Artifact,
+	type ArtifactId,
+	type ArtifactListResponse,
 	type CodeSnapshot,
 	type CodeSnapshotId,
 	type ContextDiff,
@@ -128,6 +133,31 @@ export class OrchestratorClient {
 			{ prompt },
 			runSchema
 		);
+	}
+
+	async listArtifacts(
+		projectId: ProjectId,
+		options: { nodeId?: NodeId; runId?: RunId } = {}
+	): Promise<ArtifactListResponse> {
+		const params = new URLSearchParams();
+		if (options.nodeId) params.set('node_id', options.nodeId);
+		if (options.runId) params.set('run_id', options.runId);
+		const suffix = params.toString() ? `?${params.toString()}` : '';
+		return this.#get(
+			`/projects/${projectId}/artifacts${suffix}`,
+			artifactListResponseSchema
+		);
+	}
+
+	async getArtifact(projectId: ProjectId, artifactId: ArtifactId): Promise<Artifact> {
+		return this.#get(
+			`/projects/${projectId}/artifacts/${artifactId}`,
+			artifactSchema
+		);
+	}
+
+	artifactContentUrl(projectId: ProjectId, artifactId: ArtifactId): string {
+		return this.#url(`/projects/${projectId}/artifacts/${artifactId}/content`);
 	}
 
 	async promptNode(projectId: ProjectId, nodeId: NodeId, prompt: string): Promise<Run> {

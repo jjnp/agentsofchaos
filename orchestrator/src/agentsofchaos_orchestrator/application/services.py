@@ -24,6 +24,7 @@ from agentsofchaos_orchestrator.application.queries import QueryService
 from agentsofchaos_orchestrator.application.recovery import StartupRecoveryService
 from agentsofchaos_orchestrator.application.runs import RunApplicationService
 from agentsofchaos_orchestrator.domain.models import (
+    Artifact,
     CodeSnapshot,
     ContextSnapshot,
     EventRecord,
@@ -228,3 +229,21 @@ class OrchestratorService:
 
     async def list_events(self, project_id: UUID) -> tuple[EventRecord, ...]:
         return await self._queries.list_events(project_id)
+
+    async def list_artifacts(
+        self,
+        project_id: UUID,
+        *,
+        node_id: UUID | None = None,
+        run_id: UUID | None = None,
+    ) -> tuple[Artifact, ...]:
+        return await self._queries.list_artifacts(
+            project_id, node_id=node_id, run_id=run_id
+        )
+
+    async def get_artifact(
+        self, *, project_id: UUID, artifact_id: UUID
+    ) -> Artifact:
+        return await self._queries.get_artifact(
+            project_id=project_id, artifact_id=artifact_id
+        )

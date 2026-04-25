@@ -441,6 +441,29 @@ class ArtifactRepository:
         records = (await self._session.scalars(statement)).all()
         return tuple(_to_artifact(record) for record in records)
 
+    async def list_by_project(
+        self,
+        project_id: UUID,
+        *,
+        node_id: UUID | None = None,
+        run_id: UUID | None = None,
+    ) -> tuple[Artifact, ...]:
+        statement: Select[tuple[ArtifactRecord]] = (
+            select(ArtifactRecord)
+            .where(ArtifactRecord.project_id == str(project_id))
+            .order_by(ArtifactRecord.created_at.asc())
+        )
+        if node_id is not None:
+            statement = statement.where(ArtifactRecord.node_id == str(node_id))
+        if run_id is not None:
+            statement = statement.where(ArtifactRecord.run_id == str(run_id))
+        records = (await self._session.scalars(statement)).all()
+        return tuple(_to_artifact(record) for record in records)
+
+    async def get(self, artifact_id: UUID) -> Artifact | None:
+        record = await self._session.get(ArtifactRecord, str(artifact_id))
+        return _to_artifact(record) if record is not None else None
+
 
 class OutboxRepository:
     def __init__(self, session: AsyncSession) -> None:
