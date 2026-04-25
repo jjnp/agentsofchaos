@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Render a 2x-speed gif from the latest demo recording.
+# Render a real-time gif from the latest demo recording.
 #
 # Usage:
 #   bash scripts/build-readme-gif.sh
@@ -21,11 +21,14 @@ mkdir -p "${dest_dir}"
 dest="${dest_dir}/demo.gif"
 
 # Two-pass palette generation gives a much cleaner gif than the
-# default global palette ffmpeg uses without it. Speed (2x) comes from
-# `setpts=PTS/2`. Frame rate stays at 15 — gif compresses harder than
-# webm and 30fps blows up the file size for little visible gain.
+# default global palette ffmpeg uses without it. Playback is real-time
+# (no setpts speed-up) and fps is held at 8 so the total frame count
+# stays close to what the previous 2x/15fps render produced — that
+# keeps the file size in the same ballpark even though the gif is now
+# twice as long. 8fps is fine for a UI walkthrough dominated by typing
+# and pauses; bumping it higher inflates filesize fast.
 palette="$(mktemp --suffix=.png)"
-filters="setpts=PTS/2,fps=15,scale=960:-1:flags=lanczos"
+filters="fps=8,scale=960:-1:flags=lanczos"
 
 ffmpeg -y -loglevel error -i "${src}" -vf "${filters},palettegen=stats_mode=diff" "${palette}"
 ffmpeg -y -loglevel error -i "${src}" -i "${palette}" \
