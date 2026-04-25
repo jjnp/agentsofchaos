@@ -18,7 +18,13 @@ from agentsofchaos_orchestrator.application.context_projection import (
 from agentsofchaos_orchestrator.application.eventing import ApplicationEventRecorder
 from agentsofchaos_orchestrator.application.run_state import RunStateService
 from agentsofchaos_orchestrator.application.supervisor import RunSupervisor
-from agentsofchaos_orchestrator.domain.enums import ArtifactKind, NodeKind, NodeStatus, RuntimeKind
+from agentsofchaos_orchestrator.domain.enums import (
+    ArtifactKind,
+    NodeKind,
+    NodeStatus,
+    RuntimeKind,
+    SandboxKind,
+)
 from agentsofchaos_orchestrator.domain.errors import (
     MergeAncestorError,
     MergeInvalidNodesError,
@@ -78,11 +84,13 @@ class RunApplicationService:
         events: ApplicationEventRecorder,
         now: Callable[[], datetime],
         new_uuid: Callable[[], UUID],
+        sandbox_kind: SandboxKind = SandboxKind.NONE,
     ) -> None:
         self._unit_of_work = UnitOfWorkFactory(session_factory)
         self._settings = settings
         self._git_service = git_service
         self._runtime_adapter = runtime_adapter
+        self._sandbox_kind = sandbox_kind
         self._artifact_recorder = artifact_recorder
         self._events = events
         self._supervisor = RunSupervisor()
@@ -179,6 +187,7 @@ class RunApplicationService:
             child_node_id=child_node_id,
             prompt=prompt,
             runtime=runtime,
+            sandbox=self._sandbox_kind,
             worktree_path=worktree_path,
             created_at=self._now(),
         )
@@ -252,6 +261,7 @@ class RunApplicationService:
             child_node_id=child_node_id,
             prompt=resolution_prompt,
             runtime=runtime,
+            sandbox=self._sandbox_kind,
             worktree_path=worktree_path,
             created_at=self._now(),
         )

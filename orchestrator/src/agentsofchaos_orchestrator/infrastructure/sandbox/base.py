@@ -9,24 +9,18 @@ from typing import TYPE_CHECKING, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# SandboxKind lives in the domain layer so Run can carry it as a typed
+# field; re-exported here so infrastructure callers keep their existing
+# import path.
+from agentsofchaos_orchestrator.domain.enums import SandboxKind
+
 if TYPE_CHECKING:
     from agentsofchaos_orchestrator.infrastructure.runtime.base import (
         RuntimeCancellationToken,
     )
 
 
-class SandboxKind(StrEnum):
-    """Identifies which backend an adapter is running under.
-
-    Carried alongside RuntimeKind so events can record both the agent
-    runtime *and* the isolation layer that contained it. Useful for
-    incident analysis: "this prompt-run leaked credentials" is a very
-    different conversation if it ran under `none` vs `bubblewrap`.
-    """
-
-    NONE = "none"
-    BUBBLEWRAP = "bubblewrap"
-    DOCKER = "docker"
+__all_kinds__ = (SandboxKind,)
 
 
 class SandboxNetworkPolicy(StrEnum):

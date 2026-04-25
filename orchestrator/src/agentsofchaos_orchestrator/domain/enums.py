@@ -91,6 +91,19 @@ class ContextResolutionChoice(StrEnum):
     SYNTHESIZED = "synthesized"
 
 
+class SandboxKind(StrEnum):
+    """Identifies which backend the runtime ran inside.
+
+    Persisted on Run so the inspector can show "this prompt ran under
+    bubblewrap" — a very different conversation than "ran under none"
+    when reviewing what an agent did.
+    """
+
+    NONE = "none"
+    BUBBLEWRAP = "bubblewrap"
+    DOCKER = "docker"
+
+
 class ArtifactKind(StrEnum):
     RUNTIME_TRANSCRIPT = "runtime_transcript"
     RUNTIME_SESSION = "runtime_session"

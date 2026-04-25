@@ -9,7 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agentsofchaos_orchestrator.application.artifacts import ArtifactRecorder
 from agentsofchaos_orchestrator.application.eventing import ApplicationEventRecorder
-from agentsofchaos_orchestrator.domain.enums import EventTopic, NodeKind, RunStatus, RuntimeKind
+from agentsofchaos_orchestrator.domain.enums import (
+    EventTopic,
+    NodeKind,
+    RunStatus,
+    RuntimeKind,
+    SandboxKind,
+)
 from agentsofchaos_orchestrator.domain.models import (
     CodeSnapshot,
     ContextSnapshot,
@@ -45,6 +51,7 @@ class RunStateService:
         child_node_id: UUID,
         prompt: str,
         runtime: RuntimeKind,
+        sandbox: SandboxKind,
         worktree_path: Path,
         created_at: datetime,
     ) -> Run:
@@ -56,6 +63,7 @@ class RunStateService:
             planned_child_node_id=child_node_id,
             status=RunStatus.QUEUED,
             runtime=runtime,
+            sandbox=sandbox,
             worktree_path=str(worktree_path),
         )
         run = await self.persist_run(run)
@@ -68,6 +76,8 @@ class RunStateService:
                 "source_node_id": str(source_node.id),
                 "planned_child_node_id": str(child_node_id),
                 "prompt": prompt,
+                "runtime": runtime.value,
+                "sandbox": sandbox.value,
             },
             created_at=created_at,
         )

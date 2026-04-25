@@ -111,6 +111,7 @@ class RunRecord(Base):
     )
     status: Mapped[str] = mapped_column(String(32), index=True)
     runtime: Mapped[str] = mapped_column(String(32))
+    sandbox: Mapped[str] = mapped_column(String(32), default="none")
     worktree_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     transcript_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)

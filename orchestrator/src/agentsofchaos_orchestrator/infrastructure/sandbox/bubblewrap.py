@@ -51,17 +51,80 @@ class BubblewrapSandboxBackend:
                 f"bubblewrap binary {self._bwrap_binary!r} not found on PATH; "
                 "install bubblewrap or set AOC_SANDBOX_BACKEND=none"
             )
-        process = await asyncio.create_subprocess_exec(
+        version_proc = await asyncio.create_subprocess_exec(
             self._bwrap_binary,
             "--version",
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )
-        rc = await process.wait()
+        rc = await version_proc.wait()
         if rc != 0:
             raise SandboxUnavailableError(
                 f"bubblewrap binary {self._bwrap_binary!r} failed `--version` (exit {rc})"
             )
+        # `bwrap --version` doesn't exercise namespace creation, which is
+        # the actual failure mode operators hit on hosts that ship bwrap
+        # but block unprivileged user namespaces (Ubuntu 24.04+ via
+        # AppArmor, hardened containers, etc.). Catch that here so the
+        # daemon refuses to start instead of failing on the first run
+        # with a cryptic "setting up uid map: Permission denied".
+        # Need to expose at least one host program so bwrap can exec it
+        # *after* the namespace is up. ``--ro-bind /`` is harmless for a
+        # probe and ensures whatever path we pick (`/usr/bin/true`,
+        # `/bin/true`, …) is reachable.
+        userns_proc = await asyncio.create_subprocess_exec(
+            self._bwrap_binary,
+            "--unshare-user",
+            "--uid",
+            "0",
+            "--gid",
+            "0",
+            "--ro-bind",
+            "/",
+            "/",
+            "--",
+            "/usr/bin/true" if Path("/usr/bin/true").exists() else "/bin/true",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr_bytes = await userns_proc.communicate()
+        if userns_proc.returncode != 0:
+            stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
+            hint = self._userns_failure_hint(stderr)
+            raise SandboxUnavailableError(
+                f"bubblewrap cannot create an unprivileged user namespace on this "
+                f"host (exit {userns_proc.returncode}). Underlying error: {stderr!r}.\n"
+                f"{hint}"
+            )
+
+    @staticmethod
+    def _userns_failure_hint(stderr: str) -> str:
+        # The two most common shapes we've seen on real hosts:
+        #   * "setting up uid map: Permission denied" — Ubuntu 24.04
+        #     AppArmor's `restrict_unprivileged_userns` block
+        #   * "No such file or directory" on /proc/self/uid_map — kernel
+        #     userns disabled entirely
+        lower = stderr.lower()
+        if "uid map" in lower and "permission denied" in lower:
+            return (
+                "This is the Ubuntu 24.04+ AppArmor restriction on "
+                "unprivileged user namespaces. Either:\n"
+                "  - relax it system-wide: "
+                "`sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`\n"
+                "  - or install a per-binary AppArmor profile that "
+                "permits unpriv-userns for the bwrap binary.\n"
+                "Alternatively switch to AOC_SANDBOX_BACKEND=docker or =none."
+            )
+        if "no such file" in lower and "uid_map" in lower:
+            return (
+                "User namespaces appear to be disabled in this kernel "
+                "(/proc/self/uid_map missing). Enable CONFIG_USER_NS or "
+                "switch to AOC_SANDBOX_BACKEND=docker or =none."
+            )
+        return (
+            "Switch to AOC_SANDBOX_BACKEND=docker or =none, or fix the "
+            "underlying user-namespace permissions on this host."
+        )
 
     async def spawn(self, request: SandboxedExecutionRequest) -> SandboxedProcess:
         argv = self.build_argv(request.spec)

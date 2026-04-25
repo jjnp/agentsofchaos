@@ -29,6 +29,7 @@ from agentsofchaos_orchestrator.domain.enums import (
     NodeStatus,
     RunStatus,
     RuntimeKind,
+    SandboxKind,
 )
 from agentsofchaos_orchestrator.domain.models import (
     Artifact,
@@ -125,6 +126,7 @@ def _to_run(record: RunRecord) -> Run:
         ),
         status=RunStatus(record.status),
         runtime=RuntimeKind(record.runtime),
+        sandbox=SandboxKind(record.sandbox),
         worktree_path=record.worktree_path,
         transcript_path=record.transcript_path,
         error_message=record.error_message,
@@ -344,6 +346,7 @@ class RunRepository:
             else None,
             status=run.status.value,
             runtime=run.runtime.value,
+            sandbox=run.sandbox.value,
             worktree_path=run.worktree_path,
             transcript_path=run.transcript_path,
             error_message=run.error_message,
@@ -379,6 +382,7 @@ class RunRepository:
         record.prompt = run.prompt
         record.status = run.status.value
         record.runtime = run.runtime.value
+        record.sandbox = run.sandbox.value
         record.worktree_path = run.worktree_path
         record.transcript_path = run.transcript_path
         record.error_message = run.error_message

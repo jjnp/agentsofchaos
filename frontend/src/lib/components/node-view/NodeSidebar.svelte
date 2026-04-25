@@ -102,6 +102,15 @@
 					<code class="mono dim">{node.id.slice(0, 8)}</code>
 				{/if}
 				<span class="dim">{formatRelative(node.created_at)}</span>
+				{#if originatingRun}
+					<span
+						class="chip sandbox"
+						data-sandbox={originatingRun.sandbox}
+						title={`runtime: ${originatingRun.runtime} · sandbox: ${originatingRun.sandbox}`}
+					>
+						{originatingRun.runtime} / {originatingRun.sandbox}
+					</span>
+				{/if}
 				{#if node.parent_node_ids.length > 0}
 					<span class="lineage">
 						←
@@ -339,6 +348,19 @@
 	.chip.status[data-status='context_conflicted'] {
 		color: var(--color-status-context-conflicted);
 		border-color: color-mix(in srgb, var(--color-status-context-conflicted) 40%, var(--color-border));
+	}
+	.chip.sandbox {
+		font-family: var(--font-mono);
+		text-transform: lowercase;
+		letter-spacing: 0;
+		color: var(--color-text-muted);
+	}
+	/* Highlight non-`none` sandboxes — operators want at-a-glance
+	   confirmation that the agent ran inside something. */
+	.chip.sandbox[data-sandbox='bubblewrap'],
+	.chip.sandbox[data-sandbox='docker'] {
+		color: var(--color-primary);
+		border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-border));
 	}
 	.code-chip {
 		font-size: 0.7rem;

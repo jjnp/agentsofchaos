@@ -32,6 +32,7 @@ from agentsofchaos_orchestrator.domain.models import (
     Project,
     Run,
 )
+from agentsofchaos_orchestrator.domain.enums import SandboxKind
 from agentsofchaos_orchestrator.infrastructure.event_bus import InMemoryEventBus
 from agentsofchaos_orchestrator.infrastructure.git_service import GitService
 from agentsofchaos_orchestrator.infrastructure.runtime import NoOpRuntimeAdapter, RuntimeAdapter
@@ -49,6 +50,7 @@ class OrchestratorService:
         git_service: GitService,
         event_bus: InMemoryEventBus,
         runtime_adapter: RuntimeAdapter | None = None,
+        sandbox_kind: SandboxKind = SandboxKind.NONE,
         now: Callable[[], datetime] | None = None,
         new_uuid: Callable[[], UUID] | None = None,
     ) -> None:
@@ -83,6 +85,7 @@ class OrchestratorService:
             events=events,
             now=clock,
             new_uuid=uuid_factory,
+            sandbox_kind=sandbox_kind,
         )
         self._merges = MergeApplicationService(
             session_factory=session_factory,

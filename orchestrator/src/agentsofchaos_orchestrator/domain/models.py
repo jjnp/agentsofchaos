@@ -14,6 +14,7 @@ from agentsofchaos_orchestrator.domain.enums import (
     NodeStatus,
     RunStatus,
     RuntimeKind,
+    SandboxKind,
 )
 
 
@@ -115,6 +116,7 @@ class Run(DomainModel):
     planned_child_node_id: UUID | None = None
     status: RunStatus
     runtime: RuntimeKind
+    sandbox: SandboxKind = SandboxKind.NONE
     worktree_path: str | None = None
     transcript_path: str | None = None
     error_message: str | None = None

@@ -69,6 +69,10 @@ export const runtimeKinds = [
 export type RuntimeKind = (typeof runtimeKinds)[number];
 export const runtimeKindSchema = v.picklist(runtimeKinds);
 
+export const sandboxKinds = ['none', 'bubblewrap', 'docker'] as const;
+export type SandboxKind = (typeof sandboxKinds)[number];
+export const sandboxKindSchema = v.picklist(sandboxKinds);
+
 export const eventTopics = [
 	'project_opened',
 	'root_node_created',
@@ -124,6 +128,7 @@ export const runSchema = v.object({
 	planned_child_node_id: v.nullish(nodeIdSchema),
 	status: runStatusSchema,
 	runtime: runtimeKindSchema,
+	sandbox: v.optional(sandboxKindSchema, 'none'),
 	worktree_path: v.nullish(v.string()),
 	transcript_path: v.nullish(v.string()),
 	error_message: v.nullish(v.string()),

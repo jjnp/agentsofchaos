@@ -56,6 +56,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             git_service=git_service,
             event_bus=event_bus,
             runtime_adapter=runtime_adapter,
+            sandbox_kind=sandbox.kind,
         )
 
         await initialize_database(engine)

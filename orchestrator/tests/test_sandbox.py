@@ -107,6 +107,25 @@ async def test_bubblewrap_probe_fails_when_binary_missing() -> None:
         await backend.probe()
 
 
+def test_bubblewrap_userns_hint_apparmor_block() -> None:
+    # Real Ubuntu 24.04 stderr captured during this very build.
+    stderr = "bwrap: setting up uid map: Permission denied"
+    hint = BubblewrapSandboxBackend._userns_failure_hint(stderr)
+    assert "AppArmor" in hint
+    assert "apparmor_restrict_unprivileged_userns" in hint
+
+
+def test_bubblewrap_userns_hint_kernel_disabled() -> None:
+    stderr = "bwrap: cannot open /proc/self/uid_map: No such file or directory"
+    hint = BubblewrapSandboxBackend._userns_failure_hint(stderr)
+    assert "CONFIG_USER_NS" in hint or "user namespaces" in hint.lower()
+
+
+def test_bubblewrap_userns_hint_generic_fallback() -> None:
+    hint = BubblewrapSandboxBackend._userns_failure_hint("totally unfamiliar error")
+    assert "AOC_SANDBOX_BACKEND" in hint
+
+
 def test_docker_argv_layout(tmp_path: Path) -> None:
     backend = DockerSandboxBackend(docker_binary="docker", image="debian:stable-slim")
     spec = _spec(tmp_path, network=SandboxNetworkPolicy.NONE)

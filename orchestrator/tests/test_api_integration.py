@@ -113,6 +113,12 @@ def test_full_root_prompt_flow(client: TestClient, repo: Path) -> None:
     assert run_r.status_code == 201, run_r.text
     run = run_r.json()
     assert run["source_node_id"] == root_id
+    # Sandbox audit trail: every run records which sandbox contained it.
+    # The TestClient fixture uses the default settings (sandbox_backend=none),
+    # so we expect "none" here. Operators flipping AOC_SANDBOX_BACKEND will
+    # see "bubblewrap"/"docker" persisted on every subsequent run — the
+    # whole point of the audit trail.
+    assert run["sandbox"] == "none"
     child_id = run["planned_child_node_id"]
     assert child_id
 
