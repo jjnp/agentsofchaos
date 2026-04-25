@@ -109,6 +109,16 @@ class BubblewrapSandboxBackend:
 
         if spec.network is SandboxNetworkPolicy.NONE:
             argv.append("--unshare-net")
+        else:
+            # Network=full means "share the host netns", but DNS still
+            # has to work inside the sandbox. On systemd-resolved
+            # distros (Ubuntu, Fedora, Debian-12+) /etc/resolv.conf is
+            # a symlink to /run/systemd/resolve/stub-resolv.conf — and
+            # /run is not part of our default ro-bind set. Without this
+            # the agent gets `getent hosts: not found` and every LLM
+            # call fails before it leaves the box.
+            for resolver_dir in self._resolve_dns_state_dirs():
+                self._add_mount(argv, "--ro-bind-try", resolver_dir)
 
         # Build env from the spec only. ``--setenv`` adds; we never
         # inherit the daemon's env into the namespace.
@@ -118,6 +128,29 @@ class BubblewrapSandboxBackend:
         argv.append("--")
         argv.extend(spec.command)
         return tuple(argv)
+
+    @staticmethod
+    def _resolve_dns_state_dirs() -> tuple[Path, ...]:
+        """Directories the symlink-following DNS resolution chain hits.
+
+        Empty when /etc/resolv.conf is a regular file (no fix needed).
+        Otherwise contains the parent of whatever the symlink ends up
+        pointing at, so the chain resolves inside the sandbox.
+        """
+        resolv = Path("/etc/resolv.conf")
+        if not resolv.is_symlink():
+            return ()
+        try:
+            target = resolv.resolve(strict=False)
+        except OSError:
+            return ()
+        target_dir = target.parent
+        # Skip if the target already lives in /etc (we already bound it).
+        try:
+            target_dir.relative_to("/etc")
+            return ()
+        except ValueError:
+            return (target_dir,)
 
     @staticmethod
     def _add_mount(argv: list[str], flag: str, path: Path) -> None:
