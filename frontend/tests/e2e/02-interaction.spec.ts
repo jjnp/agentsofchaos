@@ -94,14 +94,15 @@ test.describe.serial('interaction', () => {
 		await mergeNode.dispatchEvent('click');
 		await clickTab(page, 'Merge');
 		await expect(page.getByText(/Merge outcome/i)).toBeVisible({ timeout: 15_000 });
-		await expect(page.getByText(/code conflicts/i)).toBeVisible();
-		await expect(page.getByText(/context conflicts/i)).toBeVisible();
+		// Pin to the .label paragraphs so we don't collide with the tab
+		// labels ("Output Changes Context Merge Events…").
+		await expect(page.locator('.merge-report .label').filter({ hasText: 'Code merge' })).toBeVisible();
+		await expect(page.locator('.merge-report .label').filter({ hasText: 'Context merge' })).toBeVisible();
 
-		// NOTE: conflict resolution UI / `*_conflicted` status rendering is WIP
-		// on the orchestrator side (see docs/review-2026-04-24-smells.md §9 and
-		// docs/review-2026-04-25-orchestrator-functional-gaps.md). We only
-		// assert that a clean integration node is produced and its report tab
-		// renders the section headers. Resolution-specific tests will land
-		// once the backend stabilises that path.
+		// This drag-merge produces a clean integration node so the "Resolve"
+		// agent-driven resolution form should NOT render. Conflict-path
+		// coverage of resolution UI lives in the backend e2e suite for now —
+		// a frontend test that drives a real conflict needs a fixture that
+		// sets up divergent edits, which is future work.
 	});
 });

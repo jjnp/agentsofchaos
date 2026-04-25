@@ -3,6 +3,7 @@ import { SvelteMap } from 'svelte/reactivity';
 import type {
 	CodeSnapshot,
 	CodeSnapshotId,
+	ContextDiff,
 	ContextSnapshot,
 	ContextSnapshotId,
 	EventRecord,
@@ -48,6 +49,7 @@ export class GraphStore {
 	codeSnapshotsById = new SvelteMap<CodeSnapshotId, CodeSnapshot>();
 	contextSnapshotsById = new SvelteMap<ContextSnapshotId, ContextSnapshot>();
 	diffsByNodeId = new SvelteMap<NodeId, NodeDiff>();
+	contextDiffsByNodeId = new SvelteMap<NodeId, ContextDiff>();
 	connectionStatus = $state<ConnectionStatus>('idle');
 	lastError = $state<string | null>(null);
 	activeLayoutMode = $state<LayoutMode>('rings');
@@ -177,6 +179,27 @@ export class GraphStore {
 		return diff;
 	}
 
+	async fetchContextDiff(
+		nodeId: NodeId,
+		options: { force?: boolean } = {}
+	): Promise<ContextDiff> {
+		if (!options.force) {
+			const cached = this.contextDiffsByNodeId.get(nodeId);
+			if (cached) return cached;
+		}
+		const projectId = this.#requireProjectId();
+		const diff = await this.#client.getNodeContextDiff(projectId, nodeId);
+		this.contextDiffsByNodeId.set(nodeId, diff);
+		return diff;
+	}
+
+	async resolveMerge(mergeNodeId: NodeId, prompt: string): Promise<Run> {
+		const projectId = this.#requireProjectId();
+		const run = await this.#client.runMergeResolutionPrompt(projectId, mergeNodeId, prompt);
+		this.runsById.set(run.id, run);
+		return run;
+	}
+
 	select(nodeId: NodeId | null): void {
 		this.selectedNodeId = nodeId;
 	}
@@ -229,6 +252,7 @@ export class GraphStore {
 		this.codeSnapshotsById.clear();
 		this.contextSnapshotsById.clear();
 		this.diffsByNodeId.clear();
+		this.contextDiffsByNodeId.clear();
 		this.lastError = null;
 		this.connectionStatus = 'idle';
 	}

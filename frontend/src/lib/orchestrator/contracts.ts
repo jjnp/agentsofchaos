@@ -297,3 +297,125 @@ export const nodeDiffSchema = v.object({
 	files: v.array(fileDiffSchema)
 });
 export type NodeDiff = v.InferOutput<typeof nodeDiffSchema>;
+
+// --- Typed merge report -------------------------------------------------
+
+export const codeConflictStageSchema = v.object({
+	mode: v.string(),
+	object_sha: v.string(),
+	stage: v.string(),
+	path: v.string()
+});
+export type CodeConflictStage = v.InferOutput<typeof codeConflictStageSchema>;
+
+export const codeConflictFileSchema = v.object({
+	path: v.string(),
+	marker_count: v.number(),
+	preview: v.string(),
+	stages: v.array(codeConflictStageSchema)
+});
+export type CodeConflictFile = v.InferOutput<typeof codeConflictFileSchema>;
+
+export const codeMergeReportSchema = v.object({
+	clean: v.boolean(),
+	snapshot_role: codeMergeSnapshotRoleSchema,
+	contains_conflict_markers: v.boolean(),
+	resolution_required: v.boolean(),
+	conflicted_files: v.array(v.string()),
+	conflict_details: v.array(codeConflictFileSchema),
+	changed_files: v.array(v.string()),
+	stdout: v.string(),
+	stderr: v.string()
+});
+export type CodeMergeReport = v.InferOutput<typeof codeMergeReportSchema>;
+
+export const contextConflictSchema = v.object({
+	kind: v.literal('context_item_conflict'),
+	section: v.string(),
+	item_id: contextItemIdSchema,
+	source: v.nullish(contextItemSchema),
+	target: v.nullish(contextItemSchema),
+	explanation: v.string()
+});
+export type ContextConflict = v.InferOutput<typeof contextConflictSchema>;
+
+export const contextMergeReportSchema = v.object({
+	strategy_version: v.string(),
+	snapshot_role: contextMergeSnapshotRoleSchema,
+	resolution_required: v.boolean(),
+	conflict_count: v.number(),
+	conflicts: v.array(contextConflictSchema)
+});
+export type ContextMergeReport = v.InferOutput<typeof contextMergeReportSchema>;
+
+export const mergeSnapshotSemanticsSchema = v.object({
+	code_snapshot_role: codeMergeSnapshotRoleSchema,
+	context_snapshot_role: contextMergeSnapshotRoleSchema,
+	resolution_policy: mergeResolutionPolicySchema,
+	node_status_is_immutable_outcome: v.boolean()
+});
+export type MergeSnapshotSemantics = v.InferOutput<typeof mergeSnapshotSemanticsSchema>;
+
+export const typedMergeReportSchema = v.object({
+	merge_node_id: nodeIdSchema,
+	status: nodeStatusSchema,
+	source_node_id: nodeIdSchema,
+	target_node_id: nodeIdSchema,
+	ancestor_node_id: nodeIdSchema,
+	source_code_snapshot_id: codeSnapshotIdSchema,
+	target_code_snapshot_id: codeSnapshotIdSchema,
+	ancestor_code_snapshot_id: codeSnapshotIdSchema,
+	merged_code_snapshot_id: codeSnapshotIdSchema,
+	source_context_snapshot_id: contextSnapshotIdSchema,
+	target_context_snapshot_id: contextSnapshotIdSchema,
+	ancestor_context_snapshot_id: contextSnapshotIdSchema,
+	merged_context_snapshot_id: contextSnapshotIdSchema,
+	commit_sha: v.string(),
+	git_ref: v.string(),
+	snapshot_semantics: mergeSnapshotSemanticsSchema,
+	code_merge: codeMergeReportSchema,
+	context_merge: contextMergeReportSchema
+});
+export type TypedMergeReport = v.InferOutput<typeof typedMergeReportSchema>;
+
+// --- Context diff -------------------------------------------------------
+
+export const contextItemDiffSchema = v.object({
+	item_id: contextItemIdSchema,
+	change_type: v.picklist(['added', 'removed', 'changed']),
+	before: v.nullish(contextItemSchema),
+	after: v.nullish(contextItemSchema)
+});
+export type ContextItemDiff = v.InferOutput<typeof contextItemDiffSchema>;
+
+export const contextSectionDiffSchema = v.object({
+	section: v.string(),
+	additions: v.number(),
+	removals: v.number(),
+	changes: v.number(),
+	items: v.array(contextItemDiffSchema)
+});
+export type ContextSectionDiff = v.InferOutput<typeof contextSectionDiffSchema>;
+
+export const contextDiffTotalsSchema = v.object({
+	additions: v.number(),
+	removals: v.number(),
+	changes: v.number()
+});
+export type ContextDiffTotals = v.InferOutput<typeof contextDiffTotalsSchema>;
+
+export const contextDiffSchema = v.object({
+	node_id: nodeIdSchema,
+	base_snapshot_id: v.nullish(contextSnapshotIdSchema),
+	head_snapshot_id: contextSnapshotIdSchema,
+	totals: contextDiffTotalsSchema,
+	sections: v.array(contextSectionDiffSchema)
+});
+export type ContextDiff = v.InferOutput<typeof contextDiffSchema>;
+
+// --- Resolution prompt --------------------------------------------------
+
+export const resolutionPromptRequestSchema = v.object({
+	prompt: v.pipe(v.string(), v.minLength(1))
+});
+export type ResolutionPromptRequest = v.InferOutput<typeof resolutionPromptRequestSchema>;

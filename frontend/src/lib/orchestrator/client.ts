@@ -2,6 +2,7 @@ import * as v from 'valibot';
 
 import {
 	codeSnapshotSchema,
+	contextDiffSchema,
 	contextSnapshotSchema,
 	eventRecordSchema,
 	eventTopics,
@@ -15,6 +16,7 @@ import {
 	runSchema,
 	type CodeSnapshot,
 	type CodeSnapshotId,
+	type ContextDiff,
 	type ContextSnapshot,
 	type ContextSnapshotId,
 	type EventRecord,
@@ -107,6 +109,25 @@ export class OrchestratorClient {
 
 	async getNodeDiff(projectId: ProjectId, nodeId: NodeId): Promise<NodeDiff> {
 		return this.#get(`/projects/${projectId}/nodes/${nodeId}/diff`, nodeDiffSchema);
+	}
+
+	async getNodeContextDiff(projectId: ProjectId, nodeId: NodeId): Promise<ContextDiff> {
+		return this.#get(
+			`/projects/${projectId}/nodes/${nodeId}/context-diff`,
+			contextDiffSchema
+		);
+	}
+
+	async runMergeResolutionPrompt(
+		projectId: ProjectId,
+		mergeNodeId: NodeId,
+		prompt: string
+	): Promise<Run> {
+		return this.#post(
+			`/projects/${projectId}/merges/${mergeNodeId}/resolution-runs/prompt`,
+			{ prompt },
+			runSchema
+		);
 	}
 
 	async promptNode(projectId: ProjectId, nodeId: NodeId, prompt: string): Promise<Run> {
