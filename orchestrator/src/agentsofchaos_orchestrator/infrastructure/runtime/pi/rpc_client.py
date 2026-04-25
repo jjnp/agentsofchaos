@@ -49,6 +49,7 @@ class PiRpcClient:
         sandbox: SandboxBackend,
         env: dict[str, str],
         read_only_mounts: tuple[Path, ...] = (),
+        read_write_mounts: tuple[Path, ...] = (),
         cancellation_token: RuntimeCancellationToken | None = None,
         network: SandboxNetworkPolicy = SandboxNetworkPolicy.FULL,
     ) -> None:
@@ -60,6 +61,7 @@ class PiRpcClient:
         self._sandbox = sandbox
         self._env = env
         self._read_only_mounts = read_only_mounts
+        self._read_write_mounts = read_write_mounts
         self._cancellation_token = cancellation_token
         self._network = network
         self._process: AsyncProcess | None = None
@@ -81,7 +83,11 @@ class PiRpcClient:
         spec = SandboxedExecutionSpec(
             command=self._argv,
             cwd=self._cwd,
-            read_write_mounts=(self._cwd,),
+            # Always bind the worktree RW. ``self._read_write_mounts``
+            # lets the adapter add things like the pi-sessions dir
+            # (which lives under the daemon state, not under the
+            # worktree).
+            read_write_mounts=(self._cwd, *self._read_write_mounts),
             read_only_mounts=self._read_only_mounts,
             env=self._env,
             network=self._network,

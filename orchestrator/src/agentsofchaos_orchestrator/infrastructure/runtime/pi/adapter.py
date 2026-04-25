@@ -122,7 +122,17 @@ class PiRuntimeAdapter:
             shutdown_timeout_seconds=self.shutdown_timeout_seconds,
             sandbox=self.sandbox,
             env=self._build_env(),
-            read_only_mounts=self.extra_read_only_mounts,
+            # Pi reads its config and credentials from ~/.pi/agent (and
+            # any extra paths the operator wired in). Without these RO
+            # mounts the agent inside a real sandbox can't find
+            # auth.json or settings.json.
+            read_only_mounts=self._build_read_only_mounts(),
+            # Pi writes its session JSONL files to the session dir,
+            # which lives under the daemon state — outside the worktree
+            # — so it has to be RW-mounted explicitly. Otherwise the
+            # writes either fail or land on the sandbox's tmpfs and
+            # are lost the moment the namespace exits.
+            read_write_mounts=(session_dir,),
             cancellation_token=request.cancellation_token,
             network=self.network,
         )
@@ -284,6 +294,23 @@ class PiRuntimeAdapter:
         if self.extra_env is not None:
             env.update(self.extra_env)
         return env
+
+    def _build_read_only_mounts(self) -> tuple[Path, ...]:
+        """Read-only mounts pi expects to find inside the sandbox.
+
+        Pi reads ``~/.pi/agent/`` for ``auth.json`` and
+        ``settings.json``. We always include it (when it exists on the
+        host) so an operator who points the daemon at the bubblewrap or
+        docker backend doesn't have to remember to wire creds in by
+        hand. Anything explicitly listed in ``extra_read_only_mounts``
+        layers on top.
+        """
+        mounts: list[Path] = []
+        default_pi_config = Path.home() / ".pi" / "agent"
+        if default_pi_config.exists():
+            mounts.append(default_pi_config)
+        mounts.extend(self.extra_read_only_mounts)
+        return tuple(mounts)
 
     def _resolve_source_session_path(self, session_file: str | None) -> Path | None:
         if session_file is None:

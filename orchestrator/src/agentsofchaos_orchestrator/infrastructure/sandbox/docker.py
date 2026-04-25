@@ -99,6 +99,12 @@ class DockerSandboxBackend:
             "run",
             "--rm",
             "--init",
+            # Attach stdin without allocating a TTY. Required for any
+            # RPC-style runtime (pi --mode rpc, claude-code, codex)
+            # that reads JSON commands from stdin; without `-i` the
+            # container sees EOF immediately and exits before the
+            # orchestrator can send its first command.
+            "-i",
             "--user",
             f"{os.getuid()}:{os.getgid()}",
             "-w",

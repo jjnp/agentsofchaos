@@ -116,6 +116,8 @@ def test_docker_argv_layout(tmp_path: Path) -> None:
     assert argv[1] == "run"
     assert "--rm" in argv
     assert "--init" in argv
+    # Stdin attached without a TTY so RPC runtimes can be driven.
+    assert "-i" in argv
 
     # Network mode is none for the requested policy.
     network_idx = argv.index("--network")
