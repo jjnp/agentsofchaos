@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-from collections.abc import Mapping
 from contextlib import suppress
 from pathlib import Path
 from uuid import uuid4
 
 from agentsofchaos_orchestrator.domain.errors import RuntimeExecutionError
-from agentsofchaos_orchestrator.infrastructure.runtime.base import RuntimeEvent, RuntimeEventSink
+from agentsofchaos_orchestrator.infrastructure.runtime.base import (
+    RuntimeCancellationToken,
+    RuntimeEvent,
+    RuntimeEventSink,
+)
 from agentsofchaos_orchestrator.infrastructure.runtime.pi.events import (
     JsonObject,
     normalize_pi_event,
@@ -23,8 +25,13 @@ from agentsofchaos_orchestrator.infrastructure.runtime.pi.jsonl import (
 )
 from agentsofchaos_orchestrator.infrastructure.runtime.pi.process import (
     AsyncProcess,
-    PiProcessFactory,
     await_with_timeout,
+)
+from agentsofchaos_orchestrator.infrastructure.sandbox.base import (
+    SandboxBackend,
+    SandboxNetworkPolicy,
+    SandboxedExecutionRequest,
+    SandboxedExecutionSpec,
 )
 
 _DIALOG_METHODS_REQUIRING_RESPONSE = {"select", "confirm", "input", "editor"}
@@ -39,16 +46,22 @@ class PiRpcClient:
         emit: RuntimeEventSink,
         command_timeout_seconds: float,
         shutdown_timeout_seconds: float,
-        process_factory: PiProcessFactory,
-        env: Mapping[str, str] | None,
+        sandbox: SandboxBackend,
+        env: dict[str, str],
+        read_only_mounts: tuple[Path, ...] = (),
+        cancellation_token: RuntimeCancellationToken | None = None,
+        network: SandboxNetworkPolicy = SandboxNetworkPolicy.FULL,
     ) -> None:
         self._cwd = cwd
         self._argv = argv
         self._emit = emit
         self._command_timeout_seconds = command_timeout_seconds
         self._shutdown_timeout_seconds = shutdown_timeout_seconds
-        self._process_factory = process_factory
+        self._sandbox = sandbox
         self._env = env
+        self._read_only_mounts = read_only_mounts
+        self._cancellation_token = cancellation_token
+        self._network = network
         self._process: AsyncProcess | None = None
         self._response_waiters: dict[str, asyncio.Future[JsonObject]] = {}
         self._stdout_task: asyncio.Task[None] | None = None
@@ -65,10 +78,19 @@ class PiRpcClient:
         await self._emit(event)
 
     async def start(self) -> None:
-        env = dict(os.environ)
-        if self._env is not None:
-            env.update(self._env)
-        process = await self._process_factory(self._cwd, self._argv, env)
+        spec = SandboxedExecutionSpec(
+            command=self._argv,
+            cwd=self._cwd,
+            read_write_mounts=(self._cwd,),
+            read_only_mounts=self._read_only_mounts,
+            env=self._env,
+            network=self._network,
+        )
+        request = SandboxedExecutionRequest(
+            spec=spec,
+            cancellation_token=self._cancellation_token or RuntimeCancellationToken(),
+        )
+        process = await self._sandbox.spawn(request)
         if process.stdin is None or process.stdout is None or process.stderr is None:
             raise RuntimeExecutionError("Pi RPC subprocess did not expose all stdio pipes")
         self._process = process
@@ -79,7 +101,11 @@ class PiRpcClient:
             RuntimeEvent(
                 kind="runtime.process_started",
                 message="Started pi RPC subprocess.",
-                payload={"argv": list(self._argv), "cwd": str(self._cwd)},
+                payload={
+                    "argv": list(self._argv),
+                    "cwd": str(self._cwd),
+                    "sandbox": self._sandbox.kind.value,
+                },
             )
         )
 

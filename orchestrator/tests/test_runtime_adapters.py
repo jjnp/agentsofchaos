@@ -23,6 +23,12 @@ from agentsofchaos_orchestrator.infrastructure.runtime import (
     RuntimeEvent,
     RuntimeExecutionRequest,
 )
+from agentsofchaos_orchestrator.infrastructure.sandbox import (
+    SandboxBackend,
+    SandboxKind,
+    SandboxedExecutionRequest,
+    SandboxedProcess,
+)
 
 
 class FakeProcessStdin:
@@ -321,21 +327,35 @@ async def test_pi_runtime_adapter_executes_over_rpc_and_updates_session_registry
     )
     events: list[RuntimeEvent] = []
 
-    async def fake_process_factory(
-        cwd: Path,
-        argv: tuple[str, ...],
-        env: dict[str, str],
-    ) -> FakePiProcess:
-        assert cwd == request.worktree_path
-        assert argv[:4] == ("pi", "--mode", "rpc", "--session-dir")
-        assert argv[4] == str(session_dir)
-        assert env
-        return fake_process
+    class StubSandbox:
+        @property
+        def kind(self) -> SandboxKind:
+            return SandboxKind.NONE
+
+        async def probe(self) -> None:
+            return None
+
+        async def spawn(self, request: SandboxedExecutionRequest) -> SandboxedProcess:
+            spec = request.spec
+            assert spec.cwd == fake_process_request_cwd
+            assert spec.command[:4] == ("pi", "--mode", "rpc", "--session-dir")
+            assert spec.command[4] == str(session_dir)
+            assert spec.env  # whitelist resolved at least one entry
+            return fake_process  # type: ignore[return-value]
+
+    fake_process_request_cwd = request.worktree_path
+    sandbox: SandboxBackend = StubSandbox()
 
     async def capture(event: RuntimeEvent) -> None:
         events.append(event)
 
-    adapter = PiRuntimeAdapter(process_factory=fake_process_factory)
+    adapter = PiRuntimeAdapter(
+        sandbox=sandbox,
+        # The test harness can't import HOME etc. blindly; pin a single
+        # known env var so the whitelist resolution has something to do.
+        env_whitelist=("PATH",),
+        extra_env={"PI_TEST_MARKER": "1"},
+    )
     result = await adapter.execute(request=request, emit=capture)
 
     registry = json.loads(registry_path.read_text(encoding="utf-8"))

@@ -46,6 +46,11 @@ class RuntimeExecutionError(OrchestratorError):
     """Raised when a runtime adapter cannot complete a run successfully."""
 
 
+class SandboxUnavailableError(OrchestratorError):
+    """Raised when a configured sandbox backend cannot be used on this host
+    (binary missing, daemon not running, insufficient privileges, etc.)."""
+
+
 class RuntimeCancelledError(RuntimeExecutionError):
     """Raised when runtime execution is cancelled intentionally."""
 

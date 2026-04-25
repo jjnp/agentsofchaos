@@ -8,6 +8,7 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from agentsofchaos_orchestrator.domain.enums import RuntimeKind
+from agentsofchaos_orchestrator.infrastructure.sandbox.base import SandboxKind
 
 
 def _xdg_state_home() -> Path:
@@ -46,6 +47,15 @@ class Settings(BaseSettings):
     pi_binary: str = "pi"
     pi_model: str | None = None
     event_stream_keepalive_seconds: float = Field(default=15.0, gt=0.0)
+
+    # Sandbox layer (see docs/adrs/0010-pluggable-sandbox-layer.md). Default
+    # is NONE so local dev keeps working without bwrap/docker installed.
+    sandbox_backend: SandboxKind = SandboxKind.NONE
+    sandbox_bwrap_binary: str = "bwrap"
+    sandbox_docker_binary: str = "docker"
+    # Default image is intentionally unopinionated — operators pick one
+    # that contains the toolchain their chosen runtime needs.
+    sandbox_docker_image: str = "debian:stable-slim"
 
     def daemon_state_dir_for_project(self, project_root: Path) -> Path:
         return project_root / self.daemon_state_dir_name

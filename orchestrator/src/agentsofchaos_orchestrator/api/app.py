@@ -31,6 +31,7 @@ from agentsofchaos_orchestrator.infrastructure.event_bus import InMemoryEventBus
 from agentsofchaos_orchestrator.infrastructure.git_service import GitService
 from agentsofchaos_orchestrator.infrastructure.runtime import RuntimeAdapter
 from agentsofchaos_orchestrator.infrastructure.runtime.factory import build_runtime_adapter
+from agentsofchaos_orchestrator.infrastructure.sandbox import build_sandbox_backend
 from agentsofchaos_orchestrator.infrastructure.settings import Settings, get_settings
 
 
@@ -43,7 +44,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session_factory = create_session_factory(engine)
         event_bus = InMemoryEventBus()
         git_service = GitService()
-        runtime_adapter: RuntimeAdapter = build_runtime_adapter(app_settings)
+        sandbox = build_sandbox_backend(app_settings)
+        # Fail loudly at startup if the configured backend cannot run on
+        # this host — silent fallback to NoSandbox would defeat the
+        # whole point of opting into isolation.
+        await sandbox.probe()
+        runtime_adapter: RuntimeAdapter = build_runtime_adapter(app_settings, sandbox=sandbox)
         orchestrator_service = OrchestratorService(
             session_factory=session_factory,
             settings=app_settings,

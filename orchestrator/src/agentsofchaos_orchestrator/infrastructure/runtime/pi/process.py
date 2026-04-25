@@ -1,63 +1,21 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
-from pathlib import Path
-from typing import Protocol, TypeVar
+from collections.abc import Awaitable
+from typing import TypeVar
 
 from agentsofchaos_orchestrator.domain.errors import RuntimeExecutionError
+from agentsofchaos_orchestrator.infrastructure.sandbox.base import (
+    AsyncStdin,
+    SandboxedProcess,
+)
+
+# Re-exports kept for callers that still want the old aliases.
+AsyncProcess = SandboxedProcess
+
+__all__ = ["AsyncProcess", "AsyncStdin", "await_with_timeout"]
+
 _T = TypeVar("_T")
-
-
-class AsyncStdin(Protocol):
-    def write(self, data: bytes) -> None:
-        ...
-
-    async def drain(self) -> None:
-        ...
-
-    def close(self) -> None:
-        ...
-
-    def is_closing(self) -> bool:
-        ...
-
-    async def wait_closed(self) -> None:
-        ...
-
-
-class AsyncProcess(Protocol):
-    stdin: AsyncStdin | None
-    stdout: asyncio.StreamReader | None
-    stderr: asyncio.StreamReader | None
-    returncode: int | None
-
-    def terminate(self) -> None:
-        ...
-
-    def kill(self) -> None:
-        ...
-
-    async def wait(self) -> int:
-        ...
-
-
-PiProcessFactory = Callable[[Path, tuple[str, ...], dict[str, str]], Awaitable[AsyncProcess]]
-
-
-async def spawn_pi_process(
-    cwd: Path,
-    argv: tuple[str, ...],
-    env: dict[str, str],
-) -> AsyncProcess:
-    return await asyncio.create_subprocess_exec(
-        *argv,
-        cwd=str(cwd),
-        env=env,
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
 
 
 async def await_with_timeout(

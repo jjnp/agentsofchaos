@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -18,17 +19,37 @@ from agentsofchaos_orchestrator.infrastructure.runtime.base import (
 )
 from agentsofchaos_orchestrator.infrastructure.runtime.pi.context import build_contextual_prompt
 from agentsofchaos_orchestrator.infrastructure.runtime.pi.events import optional_object_dict
-from agentsofchaos_orchestrator.infrastructure.runtime.pi.process import (
-    PiProcessFactory,
-    await_with_timeout,
-    spawn_pi_process,
-)
+from agentsofchaos_orchestrator.infrastructure.runtime.pi.process import await_with_timeout
 from agentsofchaos_orchestrator.infrastructure.runtime.pi.rpc_client import PiRpcClient
+from agentsofchaos_orchestrator.infrastructure.sandbox.base import (
+    SandboxBackend,
+    SandboxNetworkPolicy,
+)
+from agentsofchaos_orchestrator.infrastructure.sandbox.none_backend import NoSandboxBackend
 from agentsofchaos_orchestrator.infrastructure.runtime.pi.session_registry import (
     load_node_session_path,
     store_node_session_path,
 )
 from agentsofchaos_orchestrator.infrastructure.runtime.pi.transcript import build_transcript
+
+
+# Default env names the Pi adapter pulls from os.environ. Anything else
+# stays inside the daemon — the sandbox layer relies on this whitelist
+# to keep credentials and host-specific paths out of the agent process.
+_DEFAULT_PI_ENV_WHITELIST: tuple[str, ...] = (
+    "HOME",
+    "PATH",
+    "LANG",
+    "LC_ALL",
+    "TERM",
+    "USER",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "OPENAI_BASE_URL",
+    "ANTHROPIC_BASE_URL",
+    "PI_AUTH_TOKEN",
+    "PI_HOME",
+)
 
 
 @dataclass(frozen=True)
@@ -40,8 +61,11 @@ class PiRuntimeAdapter:
     command_timeout_seconds: float = 30.0
     run_timeout_seconds: float | None = None
     shutdown_timeout_seconds: float = 5.0
-    process_factory: PiProcessFactory | None = None
-    env: Mapping[str, str] | None = None
+    sandbox: SandboxBackend = field(default_factory=NoSandboxBackend)
+    env_whitelist: tuple[str, ...] = _DEFAULT_PI_ENV_WHITELIST
+    extra_env: Mapping[str, str] | None = None
+    network: SandboxNetworkPolicy = SandboxNetworkPolicy.FULL
+    extra_read_only_mounts: tuple[Path, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.pi_binary.strip():
@@ -96,8 +120,11 @@ class PiRuntimeAdapter:
             emit=emit,
             command_timeout_seconds=self.command_timeout_seconds,
             shutdown_timeout_seconds=self.shutdown_timeout_seconds,
-            process_factory=self.process_factory or spawn_pi_process,
-            env=self.env,
+            sandbox=self.sandbox,
+            env=self._build_env(),
+            read_only_mounts=self.extra_read_only_mounts,
+            cancellation_token=request.cancellation_token,
+            network=self.network,
         )
         session_name = _session_name(request)
         session_file: str | None = None
@@ -241,6 +268,22 @@ class PiRuntimeAdapter:
             argv.extend(["--model", self.model])
         argv.extend(self.extra_args)
         return tuple(argv)
+
+    def _build_env(self) -> dict[str, str]:
+        """Resolve the env the agent process will see.
+
+        Pulls only whitelisted vars out of the daemon's environment so
+        the sandbox boundary stays meaningful, then layers explicit
+        overrides on top.
+        """
+        env: dict[str, str] = {}
+        for name in self.env_whitelist:
+            value = os.environ.get(name)
+            if value is not None:
+                env[name] = value
+        if self.extra_env is not None:
+            env.update(self.extra_env)
+        return env
 
     def _resolve_source_session_path(self, session_file: str | None) -> Path | None:
         if session_file is None:

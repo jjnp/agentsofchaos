@@ -167,6 +167,35 @@ Tests:
 - merge cleanup on failure
 - startup consistency checks
 
+## Phase 7 — pluggable sandbox layer
+
+Goal: put a configurable boundary between the agent process and the
+host. Documented in `docs/adrs/0010-pluggable-sandbox-layer.md`.
+
+Deliverables:
+- `SandboxBackend` protocol + typed `SandboxedExecutionSpec`
+- `NoSandboxBackend` (default; preserves current behaviour)
+- `BubblewrapSandboxBackend` — namespace-based, Linux-native
+- `DockerSandboxBackend` — image-based, cross-platform
+- Settings wiring (`AOC_SANDBOX_BACKEND`)
+- Adapter DI: subprocess-spawning adapters (Pi today) take a
+  `SandboxBackend` and route every spawn through it
+- Per-adapter mount and env whitelist (so e.g. Pi gets
+  `~/.pi/agent/` read-only and `OPENAI_API_KEY` passed through)
+
+Tests:
+- spec → argv translation (golden tests for each backend)
+- stdout/stderr streaming round-trip
+- cancellation propagation across the sandbox boundary
+- env whitelist behaviour
+- network=none rejects outbound calls
+- backend probe failure surfaces a useful error at daemon startup
+
+Out of scope for this phase:
+- gVisor / firecracker / nsjail backends
+- Sandboxing the daemon's own git merge worktrees
+- Per-mount overlayfs diffing
+
 ## 3. Initial API surface
 
 Do not start with a large API.
