@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Render a real-time gif from the latest demo recording.
+# Render a 4x-speed gif from the latest demo recording.
 #
 # Usage:
 #   bash scripts/build-readme-gif.sh
@@ -21,14 +21,13 @@ mkdir -p "${dest_dir}"
 dest="${dest_dir}/demo.gif"
 
 # Two-pass palette generation gives a much cleaner gif than the
-# default global palette ffmpeg uses without it. Playback is real-time
-# (no setpts speed-up) and fps is held at 8 so the total frame count
-# stays close to what the previous 2x/15fps render produced — that
-# keeps the file size in the same ballpark even though the gif is now
-# twice as long. 8fps is fine for a UI walkthrough dominated by typing
-# and pauses; bumping it higher inflates filesize fast.
+# default global palette ffmpeg uses without it. The recording drives a
+# real LLM through three runs + a merge so wall clock is ~10–15 min;
+# we speed the gif up 4x (`setpts=PTS/4`) and run at 6fps to keep the
+# file in the same ballpark as the noop-runtime version. Scale 960px
+# wide so the inspector text stays legible.
 palette="$(mktemp --suffix=.png)"
-filters="fps=8,scale=960:-1:flags=lanczos"
+filters="setpts=PTS/6,fps=5,scale=720:-1:flags=lanczos"
 
 ffmpeg -y -loglevel error -i "${src}" -vf "${filters},palettegen=stats_mode=diff" "${palette}"
 ffmpeg -y -loglevel error -i "${src}" -i "${palette}" \

@@ -324,14 +324,44 @@ class PiRuntimeAdapter:
         client: PiRpcClient,
         source_session_path: Path,
         source_node_id: UUID,
-    ) -> None:
-        _expect_not_cancelled(
-            await client.expect_success(
-                {"type": "switch_session", "sessionPath": str(source_session_path)},
-                error_context="switching to source pi session",
-            ),
-            action="Pi source session switch",
-        )
+    ) -> bool:
+        """Attempt to fork the parent's pi session into the new run.
+
+        Returns True if the clone succeeded, False if pi rejected the
+        switch because the parent's recorded working directory has been
+        cleaned up. Each prompt run gets a fresh worktree and the parent
+        worktree is removed at end-of-run, so pi's stored session cwd
+        often points at a path that no longer exists. When that happens
+        we fall back to a fresh session — losing pi's memory of the
+        parent run's tool history, but keeping the run alive — rather
+        than crashing the whole run with RuntimeExecutionError.
+        """
+        try:
+            _expect_not_cancelled(
+                await client.expect_success(
+                    {"type": "switch_session", "sessionPath": str(source_session_path)},
+                    error_context="switching to source pi session",
+                ),
+                action="Pi source session switch",
+            )
+        except RuntimeExecutionError as exc:
+            if "working directory does not exist" not in str(exc):
+                raise
+            await client.emit(
+                RuntimeEvent(
+                    kind="runtime.session_clone_skipped",
+                    message=(
+                        "Source pi session points at a worktree that no longer exists; "
+                        "starting a fresh session instead."
+                    ),
+                    payload={
+                        "source_node_id": str(source_node_id),
+                        "source_session_file": str(source_session_path),
+                        "reason": str(exc),
+                    },
+                )
+            )
+            return False
         _expect_not_cancelled(
             await client.expect_success(
                 {"type": "clone"},
@@ -349,6 +379,7 @@ class PiRuntimeAdapter:
                 },
             )
         )
+        return True
 
 
 async def _wait_for_completion_or_cancel(

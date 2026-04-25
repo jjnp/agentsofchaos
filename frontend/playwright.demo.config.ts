@@ -4,15 +4,20 @@
  *   - records video unconditionally at 1280×720
  *   - targets a different fixture path so it doesn't fight the e2e DB
  *   - runs only tests/demo/* (the test:e2e default excludes tests/demo)
+ *   - drives the *real* pi runtime so the gif shows real LLM work
  *
  * Usage:
  *   npx playwright test --config playwright.demo.config.ts
  * The resulting video lands in test-results/<name>/video.webm; the
- * `scripts/build-readme-gif.sh` helper turns it into a 2x-speed gif.
+ * `scripts/build-readme-gif.sh` helper turns it into a sped-up gif.
+ *
+ * Requires:
+ *   - `pi` on PATH and configured (~/.pi/agent/{settings,auth}.json)
+ *   - OPENAI_API_KEY available (we read it from orchestrator/.env)
  */
 
 import { execSync } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 
 import { defineConfig, devices } from '@playwright/test';
 
@@ -26,6 +31,26 @@ const BACKEND_HEALTH = `http://127.0.0.1:${BACKEND_PORT}/health`;
 // parallel with normal CI without fighting for state.
 const DEMO_REPO = '/tmp/aoc-demo-repo';
 const DEMO_DB = '/tmp/aoc-demo.sqlite3';
+
+// Pull OPENAI_API_KEY out of orchestrator/.env so the user doesn't have
+// to remember to source it. Falls back to whatever is already in the
+// shell environment if the file isn't there.
+function loadOpenAIKey(): string {
+	const envFromShell = process.env['OPENAI_API_KEY'];
+	if (envFromShell) return envFromShell;
+	try {
+		const contents = readFileSync('../orchestrator/.env', 'utf8');
+		for (const line of contents.split(/\r?\n/)) {
+			const match = /^OPENAI_API_KEY=(.*)$/.exec(line.trim());
+			if (match) return match[1];
+		}
+	} catch {
+		// ignore — fall through to empty
+	}
+	return '';
+}
+
+const OPENAI_API_KEY = loadOpenAIKey();
 
 const IS_WORKER =
 	process.env['TEST_WORKER_INDEX'] !== undefined ||
@@ -57,7 +82,9 @@ function resetFixture() {
 
 export default defineConfig({
 	testDir: './tests/demo',
-	timeout: 180_000,
+	// Real pi runs are slow — three prompts + a merge can take 10+ min
+	// of wall clock. Give the suite plenty of room.
+	timeout: 1_800_000,
 	fullyParallel: false,
 	workers: 1,
 	retries: 0,
@@ -75,13 +102,13 @@ export default defineConfig({
 	projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 	webServer: [
 		{
-			command: `cd ../orchestrator && AOC_HOST=127.0.0.1 AOC_PORT=${BACKEND_PORT} AOC_RUNTIME_BACKEND=noop AOC_DATABASE_URL=sqlite+aiosqlite:///${DEMO_DB} .venv/bin/python -m agentsofchaos_orchestrator.main`,
+			command: `cd ../orchestrator && AOC_HOST=127.0.0.1 AOC_PORT=${BACKEND_PORT} AOC_RUNTIME_BACKEND=pi AOC_DATABASE_URL=sqlite+aiosqlite:///${DEMO_DB} .venv/bin/python -m agentsofchaos_orchestrator.main`,
 			url: BACKEND_HEALTH,
 			reuseExistingServer: false,
 			stdout: 'pipe',
 			stderr: 'pipe',
 			timeout: 60_000,
-			env: { ...process.env, PYTHONUNBUFFERED: '1' }
+			env: { ...process.env, PYTHONUNBUFFERED: '1', OPENAI_API_KEY }
 		},
 		{
 			// Point the dev-server proxy at the demo backend port so
