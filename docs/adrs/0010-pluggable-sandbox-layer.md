@@ -97,6 +97,35 @@ read-only mount of the credentials directory and an env whitelist. The
 runtime adapter declares what it needs; the sandbox layer enforces the
 whitelist.
 
+### Network policy and the LLM-provider problem
+
+`network=none` is the strongest filesystem-isolation companion but it
+**breaks every LLM-using runtime** — Pi, Claude Code, Codex, the
+OpenAI client, all need outbound TLS to their provider. We could not
+default to `none` for these adapters.
+
+Each runtime adapter therefore declares its own default network mode:
+
+| Adapter | Default | Rationale |
+|---|---|---|
+| `noop` | `none` | does no I/O |
+| `pi` | `full` | calls OpenAI/Anthropic from inside the sandbox |
+| (future `claude_code`, `codex`) | `full` | same as Pi |
+| (future `local_llm`) | `none` | local model, no egress needed |
+
+`full` here means "host network" — the same outbound capability the
+unsandboxed daemon has. It is **not** a fine-grained allowlist; the
+sandbox cannot enforce "only api.openai.com on 443". If you need that,
+run the daemon behind an egress proxy and bind only the proxy host
+into the sandbox.
+
+A future revision will introduce `SandboxNetworkPolicy.EGRESS_ALLOWLIST`
+backed by per-backend mechanisms (docker user-defined networks +
+firewall rules; bwrap + an inner DNS that only resolves allowlisted
+hosts). That is explicitly out of scope for the v1 phase to avoid
+shipping a half-built filter that operators trust more than it
+deserves.
+
 ## Consequences
 
 **Positive**:
