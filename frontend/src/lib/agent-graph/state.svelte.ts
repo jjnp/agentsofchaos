@@ -1,6 +1,7 @@
 import { SvelteMap } from 'svelte/reactivity';
 
 import type {
+	Artifact,
 	CodeSnapshot,
 	CodeSnapshotId,
 	ContextDiff,
@@ -50,6 +51,7 @@ export class GraphStore {
 	contextSnapshotsById = new SvelteMap<ContextSnapshotId, ContextSnapshot>();
 	diffsByNodeId = new SvelteMap<NodeId, NodeDiff>();
 	contextDiffsByNodeId = new SvelteMap<NodeId, ContextDiff>();
+	artifactsByNodeId = new SvelteMap<NodeId, readonly Artifact[]>();
 	connectionStatus = $state<ConnectionStatus>('idle');
 	lastError = $state<string | null>(null);
 	activeLayoutMode = $state<LayoutMode>('rings');
@@ -200,6 +202,26 @@ export class GraphStore {
 		return run;
 	}
 
+	async fetchArtifactsForNode(
+		nodeId: NodeId,
+		options: { force?: boolean } = {}
+	): Promise<readonly Artifact[]> {
+		if (!options.force) {
+			const cached = this.artifactsByNodeId.get(nodeId);
+			if (cached) return cached;
+		}
+		const projectId = this.#requireProjectId();
+		const result = await this.#client.listArtifacts(projectId, { nodeId });
+		const artifacts = result.artifacts;
+		this.artifactsByNodeId.set(nodeId, artifacts);
+		return artifacts;
+	}
+
+	artifactContentUrl(artifactId: Artifact['id']): string {
+		const projectId = this.#requireProjectId();
+		return this.#client.artifactContentUrl(projectId, artifactId);
+	}
+
 	select(nodeId: NodeId | null): void {
 		this.selectedNodeId = nodeId;
 	}
@@ -253,6 +275,7 @@ export class GraphStore {
 		this.contextSnapshotsById.clear();
 		this.diffsByNodeId.clear();
 		this.contextDiffsByNodeId.clear();
+		this.artifactsByNodeId.clear();
 		this.lastError = null;
 		this.connectionStatus = 'idle';
 	}

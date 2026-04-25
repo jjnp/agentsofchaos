@@ -6,11 +6,12 @@
 
 	import { nodeKindLabel, nodeStatusLabel } from '../agent-graph/node-styles';
 	import NodeDiffViewer from '../node-diff/NodeDiffViewer.svelte';
+	import ArtifactsView from './ArtifactsView.svelte';
 	import ContextSnapshotView from './ContextSnapshotView.svelte';
 	import MergeReport from './MergeReport.svelte';
 	import TerminalOutput from './TerminalOutput.svelte';
 
-	type DetailTab = 'events' | 'output' | 'changes' | 'context' | 'merge';
+	type DetailTab = 'events' | 'output' | 'changes' | 'context' | 'merge' | 'artifacts';
 
 	interface Props {
 		store: GraphStore;
@@ -188,6 +189,17 @@
 			<button
 				type="button"
 				class="tab"
+				class:tab--active={activeTab === 'artifacts'}
+				role="tab"
+				aria-selected={activeTab === 'artifacts'}
+				disabled={!node}
+				onclick={() => (activeTab = 'artifacts')}
+			>
+				Artifacts
+			</button>
+			<button
+				type="button"
+				class="tab"
 				class:tab--active={activeTab === 'events'}
 				role="tab"
 				aria-selected={activeTab === 'events'}
@@ -224,6 +236,8 @@
 				<div class="merge-scroll">
 					<MergeReport {store} {node} />
 				</div>
+			{:else if activeTab === 'artifacts' && node}
+				<ArtifactsView {store} {node} />
 			{/if}
 		</div>
 	</section>

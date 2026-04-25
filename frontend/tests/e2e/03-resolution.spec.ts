@@ -128,5 +128,20 @@ test.describe.serial('resolution', () => {
 		await expectNodeCount(page, 6, 30_000);
 		const resolutionNode = page.locator('.agent-node.kind-resolution').first();
 		await expect(resolutionNode).toBeVisible({ timeout: 15_000 });
+
+		// Artifacts tab on the merge node lists the merge report. The
+		// resolution backend writes the resolution report against the
+		// successor node — exercise that path too.
+		await mergeNode.dispatchEvent('click');
+		await clickTab(page, 'Artifacts');
+		await expect(
+			page.locator('.artifacts .row .kind').filter({ hasText: 'merge_report' })
+		).toBeVisible({ timeout: 15_000 });
+
+		await resolutionNode.dispatchEvent('click');
+		await clickTab(page, 'Artifacts');
+		await expect(
+			page.locator('.artifacts .row .kind').filter({ hasText: 'resolution_report' })
+		).toBeVisible({ timeout: 15_000 });
 	});
 });

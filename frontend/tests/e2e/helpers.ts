@@ -46,7 +46,10 @@ export async function expectNodeCount(page: Page, n: number, timeoutMs = 15_000)
 }
 
 /** Click on a tab in the inspector. */
-export async function clickTab(page: Page, name: 'Output' | 'Changes' | 'Context' | 'Merge' | 'Events') {
+export async function clickTab(
+	page: Page,
+	name: 'Output' | 'Changes' | 'Context' | 'Merge' | 'Artifacts' | 'Events'
+) {
 	await page.getByRole('tab', { name: new RegExp(`^${name}`) }).click();
 }
 
