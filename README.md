@@ -32,8 +32,8 @@ context from a common ancestor, just like git.
 
 | Path | Purpose |
 |---|---|
-| [`apps/orchestrator-v2/`](apps/orchestrator-v2/) | Local-first FastAPI daemon. Owns the graph, code/context snapshots, runs, merges, events. SQLite + git as substrate. Pluggable runtime adapters. |
-| [`frontend-v2/`](frontend-v2/) | SvelteKit graph-native UI. Drag-to-merge canvas, node inspector with live runtime output, code diffs, structured context. |
+| [`orchestrator/`](orchestrator/) | Local-first FastAPI daemon. Owns the graph, code/context snapshots, runs, merges, events. SQLite + git as substrate. Pluggable runtime adapters. |
+| [`frontend/`](frontend/) | SvelteKit graph-native UI. Drag-to-merge canvas, node inspector with live runtime output, code diffs, structured context. |
 | [`docs/`](docs/) | Cross-cutting design notes and reviews. |
 | [`.pi/`](.pi/) | Project-local pi extension prompts and skills. |
 
@@ -47,32 +47,32 @@ Run two processes side-by-side.
 ### 1. Orchestrator daemon
 
 ```bash
-cd apps/orchestrator-v2
+cd orchestrator
 uv venv .venv --python 3.12
 uv pip install --python .venv/bin/python -e '.[dev]'
 
-# Optional: drop your OpenAI key into apps/orchestrator-v2/.env
+# Optional: drop your OpenAI key into orchestrator/.env
 # (see below). Sourcing it makes pi inherit the credentials.
 set -a; source .env; set +a
 
-AOC_V2_HOST=0.0.0.0 \
-AOC_V2_RUNTIME_BACKEND=pi \
-.venv/bin/python -m agentsofchaos_orchestrator_v2.main
+AOC_HOST=0.0.0.0 \
+AOC_RUNTIME_BACKEND=pi \
+.venv/bin/python -m agentsofchaos_orchestrator.main
 ```
 
-Listens on `http://127.0.0.1:8000`. Configurable via `AOC_V2_*` env
-vars; see `apps/orchestrator-v2/src/agentsofchaos_orchestrator_v2/infrastructure/settings.py`.
+Listens on `http://127.0.0.1:8000`. Configurable via `AOC_*` env
+vars; see `orchestrator/src/agentsofchaos_orchestrator/infrastructure/settings.py`.
 
 ### 2. Frontend
 
 ```bash
-cd frontend-v2
+cd frontend
 bun install   # or npm install
 bun run dev   # or npm run dev
 ```
 
 Open `http://localhost:5173`. The dev server proxies `/api/orchestrator/*`
-to the daemon (override target via `ORCHESTRATOR_V2_BASE_URL`).
+to the daemon (override target via `ORCHESTRATOR_BASE_URL`).
 
 ## Pi runtime
 
@@ -83,7 +83,7 @@ resulting commit.
 
 Pi reads its provider/model from `~/.pi/agent/settings.json` and
 credentials from environment or `~/.pi/agent/auth.json`. To use plain
-OpenAI with the project's `apps/orchestrator-v2/.env`:
+OpenAI with the project's `orchestrator/.env`:
 
 ```jsonc
 // ~/.pi/agent/settings.json
@@ -91,7 +91,7 @@ OpenAI with the project's `apps/orchestrator-v2/.env`:
 ```
 
 ```dotenv
-# apps/orchestrator-v2/.env
+# orchestrator/.env
 OPENAI_API_KEY=sk-...
 ```
 
@@ -102,10 +102,10 @@ adapter protocol; only `noop` and `pi` ship today.
 
 ```bash
 # Backend
-cd apps/orchestrator-v2 && .venv/bin/python -m pytest tests/ -q
+cd orchestrator && .venv/bin/python -m pytest tests/ -q
 
 # Frontend
-cd frontend-v2 && npx svelte-check --tsconfig ./tsconfig.json && npm run build
+cd frontend && npx svelte-check --tsconfig ./tsconfig.json && npm run build
 ```
 
 ## Architecture in one screen
@@ -119,12 +119,12 @@ cd frontend-v2 && npx svelte-check --tsconfig ./tsconfig.json && npm run build
 * **The graph is the product** — not a visualization of hidden state.
 
 Deeper docs:
-- [`apps/orchestrator-v2/docs/manifesto.md`](apps/orchestrator-v2/docs/manifesto.md) — what we believe
-- [`apps/orchestrator-v2/docs/architecture.md`](apps/orchestrator-v2/docs/architecture.md) — system design
-- [`apps/orchestrator-v2/docs/context-model.md`](apps/orchestrator-v2/docs/context-model.md) — first-class context
-- [`apps/orchestrator-v2/docs/runtime-adapters.md`](apps/orchestrator-v2/docs/runtime-adapters.md) — runtime contract
-- [`apps/orchestrator-v2/docs/implementation-plan.md`](apps/orchestrator-v2/docs/implementation-plan.md) — phased build
-- [`apps/orchestrator-v2/docs/adrs/`](apps/orchestrator-v2/docs/adrs/) — decision records
+- [`orchestrator/docs/manifesto.md`](orchestrator/docs/manifesto.md) — what we believe
+- [`orchestrator/docs/architecture.md`](orchestrator/docs/architecture.md) — system design
+- [`orchestrator/docs/context-model.md`](orchestrator/docs/context-model.md) — first-class context
+- [`orchestrator/docs/runtime-adapters.md`](orchestrator/docs/runtime-adapters.md) — runtime contract
+- [`orchestrator/docs/implementation-plan.md`](orchestrator/docs/implementation-plan.md) — phased build
+- [`orchestrator/docs/adrs/`](orchestrator/docs/adrs/) — decision records
 
 ## Archive
 
