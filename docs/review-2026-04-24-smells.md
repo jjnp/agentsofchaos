@@ -1,18 +1,35 @@
 # Orchestrator Review — 2026-04-24
 
-Observations collected during the backend ↔ frontend integration smoke test.
+Observations collected during the backend ↔ frontend integration smoke
+test. Fix status updated 2026-04-25.
 
-## TL;DR
+## Status
 
-- **One real bug**: SSE emits `run_started` twice per run. Idempotent consumers are safe; non-idempotent ones will double-count.
-- **One consistent foot-gun**: event wrappers are snake_case, their `payload` bodies are camelCase. Every consumer hits this once.
-- **Two naming confusions**: the `noop` settings backend reports itself as `runtime: "custom"`; `Literal["noop", "pi"]` disagrees with the `RuntimeKind` enum.
-- **Two missing endpoints**: `GET /projects/{id}/nodes/{node_id}` (recommended in the plan, never implemented); `/diffs/code` + `/diffs/context` (needed for architecture.md §14 step 5).
-- **Test coverage gap**: `context_conflicted` and `both_conflicted` statuses exist but aren't exercised end-to-end.
+| #  | Smell                                            | Status   |
+|----|--------------------------------------------------|----------|
+| 1  | Duplicate SSE event delivery                     | **fixed**    |
+| 2  | Mixed payload casing (snake/camel)               | open     |
+| 3  | `noop` backend reports `runtime: "custom"`       | open     |
+| 4  | `runtime_backend` literal disagrees with enum    | open     |
+| 5  | Missing `GET /projects/{id}/nodes/{node_id}`     | **fixed**    |
+| 6  | Missing diff endpoints                            | **partial** (code diff shipped; context diff still out) |
+| 7  | Default sqlite path is CWD-relative              | open     |
+| 8  | `/merges` same-node returns 409 with bad code    | open     |
+| 9  | Merge test coverage gap                          | **partial** (unit tests of `_merge_status` shipped; e2e for `*_conflicted` still missing) |
 
 ---
 
-## 1. Duplicate SSE event delivery _(real bug)_
+## TL;DR
+
+- **One real bug**: SSE emits `run_started` twice per run. Idempotent consumers are safe; non-idempotent ones will double-count. _(fixed)_
+- **One consistent foot-gun**: event wrappers are snake_case, their `payload` bodies are camelCase. Every consumer hits this once.
+- **Two naming confusions**: the `noop` settings backend reports itself as `runtime: "custom"`; `Literal["noop", "pi"]` disagrees with the `RuntimeKind` enum.
+- **Two missing endpoints**: `GET /projects/{id}/nodes/{node_id}` _(fixed)_ and diff endpoints _(code diff shipped; context diff still out)_.
+- **Test coverage gap**: `context_conflicted` and `both_conflicted` statuses exist but aren't exercised end-to-end. _(unit-level coverage of the classifier shipped)_
+
+---
+
+## 1. Duplicate SSE event delivery — _fixed_
 
 **Evidence.** During an SSE trace of a second prompt run, the same `run_started` event record (id `68341298-b412-4bb9-bc43-80297530c08f`) was delivered twice consecutively:
 
@@ -28,13 +45,13 @@ Same id, same payload, back-to-back.
 
 **Hypothesis.** architecture.md §10 says "Pre-1.0 may still publish inline after commit, but durable publishing must go through an explicit outbox dispatcher boundary so the system can converge on background dispatch without changing event semantics." The likely cause is both an inline `event_bus.publish(...)` _and_ the `OutboxDispatchWorker` replaying the same record.
 
-**Impact.** Idempotent consumers (my `GraphStore` does a full `refreshGraph()` on node events) are safe. Non-idempotent ones — anything appending to a terminal, counting tokens per event, or writing a transcript line per event — will double-count.
+**Impact.** Idempotent consumers (the `GraphStore` does a full `refreshGraph()` on node events) are safe. Non-idempotent ones — anything appending to a terminal, counting tokens per event, or writing a transcript line per event — will double-count.
 
-**Fix.** Pick one path (inline OR outbox) and make the other a no-op until the outbox fully replaces inline. Add a regression test: "publish N events → subscriber sees N, not 2N".
+**Fix landed.** `OutboxRepository.mark_published` now atomically claims a row via `UPDATE … WHERE published_at IS NULL` and returns whether the claim succeeded. `OutboxDispatcher.dispatch_event` reorders to mark-then-publish: only the call that wins the claim publishes to the bus. Verified live by tracing 3 back-to-back prompts and confirming exactly 3 events per topic, no duplicates.
 
 ---
 
-## 2. Mixed payload casing
+## 2. Mixed payload casing — _open_
 
 **Evidence.** From the SSE trace:
 
@@ -63,7 +80,7 @@ Wrapper: snake_case (Pydantic's default emission of field names). Payload: camel
 
 ---
 
-## 3. `noop` backend reports `runtime: "custom"`
+## 3. `noop` backend reports `runtime: "custom"` — _open_
 
 **Evidence.**
 
@@ -77,7 +94,7 @@ Wrapper: snake_case (Pydantic's default emission of field names). Payload: camel
 
 ---
 
-## 4. `runtime_backend` literal disagrees with `RuntimeKind`
+## 4. `runtime_backend` literal disagrees with `RuntimeKind` — _open_
 
 **Evidence.** `Literal["noop", "pi"]` in settings vs `RuntimeKind` with 5 values. runtime-adapters.md §9.2 and ADR-0005 both explicitly plan for `ClaudeCodeRuntimeAdapter` and `CodexRuntimeAdapter`.
 
@@ -87,27 +104,27 @@ Wrapper: snake_case (Pydantic's default emission of field names). Payload: camel
 
 ---
 
-## 5. Missing `GET /projects/{id}/nodes/{node_id}`
+## 5. Missing `GET /projects/{id}/nodes/{node_id}` — _fixed_
 
-**Evidence.** `api/routes/projects.py` has endpoints to create a root node and to prompt from a node, but no way to fetch a single node by id. implementation-plan.md §3 listed `GET /nodes/{node_id}` as a recommended initial endpoint.
+**Evidence.** `api/routes/projects.py` previously had endpoints to create a root node and to prompt from a node, but no way to fetch a single node by id. implementation-plan.md §3 listed `GET /nodes/{node_id}` as a recommended initial endpoint.
 
-**Impact.** Every consumer that wants one node has to fetch the whole graph. Scales poorly once graphs get real, and complicates incremental UI updates after an event lands.
+**Impact (was).** Every consumer that wants one node had to fetch the whole graph. Scales poorly once graphs get real, and complicates incremental UI updates after an event lands.
 
-**Fix.** Trivial — call an existing repository method.
-
----
-
-## 6. Missing diff endpoints
-
-**Evidence.** architecture.md §14 step 5 is "inspect code and context diffs between nodes." No `GET /diffs/code` or `GET /diffs/context` routes exist. `GitService` already exposes diff primitives internally.
-
-**Impact.** Blocks the architectural success story from being end-to-end demonstrable. The UI can describe snapshot IDs but not their contents.
-
-**Fix.** Add two endpoints. Code diff: thin wrapper over `git diff` between two snapshots' commit SHAs. Context diff: use the existing context comparison logic (per context-model.md §8).
+**Fix landed.** `QueryService.get_node(project_id, node_id)` enforces project ownership and raises `NodeNotFoundError` (mapped to `404 NODE_NOT_FOUND` by the existing handler). Route `GET /projects/{project_id}/nodes/{node_id}` returns `NodeResponse`. Frontend now uses `client.getNode()` to refresh single nodes after events.
 
 ---
 
-## 7. Default sqlite path is CWD-relative
+## 6. Missing diff endpoints — _partial_
+
+**Evidence.** architecture.md §14 step 5 is "inspect code and context diffs between nodes." `GitService` already exposed diff primitives internally; no HTTP surface.
+
+**Fix landed (code diff).** `GET /projects/{project_id}/nodes/{node_id}/diff` returns parsed `FileDiff[]` with hunks, totals, and base/head commit SHA. Powered by a new `application/diffs.py` (`DiffApplicationService` + a unified-diff parser handling rename/delete/binary headers). The frontend's `Changes` tab consumes it directly.
+
+**Still open (context diff).** `GET /diffs/context` not implemented; the typed three-way context comparison from context-model.md §8 has no HTTP surface yet. The `Context` tab in the inspector reads the full context snapshot, not a diff.
+
+---
+
+## 7. Default sqlite path is CWD-relative — _open_
 
 **Evidence.** `database_url: str = "sqlite+aiosqlite:///./.aoc-orchestrator.sqlite3"` in settings.py.
 
@@ -117,7 +134,7 @@ Wrapper: snake_case (Pydantic's default emission of field names). Payload: camel
 
 ---
 
-## 8. `/merges` same-node error returns 409 with a misleading code
+## 8. `/merges` same-node error returns 409 with a misleading code — _open_
 
 **Evidence.**
 
@@ -132,20 +149,18 @@ POST /projects/{id}/merges   {source_node_id: X, target_node_id: X}
 
 ---
 
-## 9. Merge test coverage gap
+## 9. Merge test coverage gap — _partial_
 
-**Evidence.**
+**Evidence (was).**
 
 - `tests/test_merge_flow.py`: clean merge, code-conflicted merge.
 - `tests/test_context_merge.py`: divergent-edit (unit-level), one-sided-edit (unit-level).
 
 Missing: full-pipeline tests that produce `context_conflicted` or `both_conflicted` node statuses.
 
-**Impact.** Those two statuses are declared and classified in `_merge_status()`, but no test confirms the end-to-end wiring lands a node in either state correctly.
+**Fix landed (classifier unit tests).** New `tests/test_merge_status.py` exercises the `_merge_status()` classifier across all four outcomes (`READY`, `CODE_CONFLICTED`, `CONTEXT_CONFLICTED`, `BOTH_CONFLICTED`) plus multi-conflict variants. The classifier is now pinned independently of context-projection maturity.
 
-**Fix.** Two more cases in `test_merge_flow.py`:
-1. Code identical, contexts diverge → node status `context_conflicted`.
-2. Both code and contexts diverge → node status `both_conflicted`.
+**Still open (e2e).** No `MergeApplicationService.merge_nodes()` test produces a `context_conflicted` or `both_conflicted` node end-to-end. The current context projection always emits items with fresh UUIDs, so siblings can't naturally produce divergent-edit context items. Closing this requires either a projection that can emit deterministic ids or a test seam to plant context items into source/target snapshots before the merge call.
 
 Golden-path conflict tests are called mandatory by implementation-plan.md §6 (Phase 5).
 
@@ -159,14 +174,12 @@ Golden-path conflict tests are called mandatory by implementation-plan.md §6 (P
 
 ---
 
-## Priority suggestion
+## Priority suggestion (remaining)
 
-1. Duplicate SSE (§1) — real bug, affects every SSE consumer.
-2. Payload casing (§2) — every new consumer will hit it once.
-3. Missing `GET /nodes/{id}` (§5) — tiny to add, unblocks cleaner UI code paths.
-4. Missing diff endpoints (§6) — unblocks arch §14 step 5.
-5. Noop/custom naming (§3) + runtime_backend literal (§4) — combine into one small refactor.
-6. Merge coverage (§9) — fill the conflict-status test matrix.
-7. DB path default (§7), 409 vs 422 (§8) — nice-to-haves.
+1. Payload casing (§2) — every new consumer will hit it once.
+2. Noop/custom naming (§3) + runtime_backend literal (§4) — combine into one small refactor.
+3. Context diff endpoint (§6 partial) — finish the Changes/Context inspector loop.
+4. E2E merge coverage (§9 partial) — fill the conflict-status test matrix.
+5. DB path default (§7), 409 vs 422 (§8) — nice-to-haves.
 
-None of the above block frontend development. They just shape which integrations stay simple and which grow warts.
+None of these block frontend development. They just shape which integrations stay simple and which grow warts.

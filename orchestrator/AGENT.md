@@ -168,7 +168,7 @@ Docs should explain:
 - where it is tested
 
 ### 7.3 ADRs
-Any material architectural decision should be written as an ADR in `docs/adrs/`.
+Any material architectural decision should be written as an ADR in `../docs/adrs/`.
 
 ## 8. Git and change management
 

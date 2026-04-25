@@ -34,7 +34,7 @@ context from a common ancestor, just like git.
 |---|---|
 | [`orchestrator/`](orchestrator/) | Local-first FastAPI daemon. Owns the graph, code/context snapshots, runs, merges, events. SQLite + git as substrate. Pluggable runtime adapters. |
 | [`frontend/`](frontend/) | SvelteKit graph-native UI. Drag-to-merge canvas, node inspector with live runtime output, code diffs, structured context. |
-| [`docs/`](docs/) | Cross-cutting design notes and reviews. |
+| [`docs/`](docs/) | Manifesto, architecture, context model, runtime contract, implementation plan, ADRs, reviews. |
 | [`.pi/`](.pi/) | Project-local pi extension prompts and skills. |
 
 The previous hackathon stack (Node MVP orchestrator + v1 SvelteKit
@@ -60,8 +60,8 @@ AOC_RUNTIME_BACKEND=pi \
 .venv/bin/python -m agentsofchaos_orchestrator.main
 ```
 
-Listens on `http://127.0.0.1:8000`. Configurable via `AOC_*` env
-vars; see `orchestrator/src/agentsofchaos_orchestrator/infrastructure/settings.py`.
+Listens on `http://127.0.0.1:8000`. Configurable via `AOC_*` env vars;
+see [`orchestrator/src/agentsofchaos_orchestrator/infrastructure/settings.py`](orchestrator/src/agentsofchaos_orchestrator/infrastructure/settings.py).
 
 ### 2. Frontend
 
@@ -119,12 +119,14 @@ cd frontend && npx svelte-check --tsconfig ./tsconfig.json && npm run build
 * **The graph is the product** — not a visualization of hidden state.
 
 Deeper docs:
-- [`orchestrator/docs/manifesto.md`](orchestrator/docs/manifesto.md) — what we believe
-- [`orchestrator/docs/architecture.md`](orchestrator/docs/architecture.md) — system design
-- [`orchestrator/docs/context-model.md`](orchestrator/docs/context-model.md) — first-class context
-- [`orchestrator/docs/runtime-adapters.md`](orchestrator/docs/runtime-adapters.md) — runtime contract
-- [`orchestrator/docs/implementation-plan.md`](orchestrator/docs/implementation-plan.md) — phased build
-- [`orchestrator/docs/adrs/`](orchestrator/docs/adrs/) — decision records
+- [`docs/manifesto.md`](docs/manifesto.md) — what we believe
+- [`docs/architecture.md`](docs/architecture.md) — system design
+- [`docs/context-model.md`](docs/context-model.md) — first-class context
+- [`docs/runtime-adapters.md`](docs/runtime-adapters.md) — runtime contract
+- [`docs/implementation-plan.md`](docs/implementation-plan.md) — phased build
+- [`docs/adrs/`](docs/adrs/) — decision records
+- [`docs/review-2026-04-24-smells.md`](docs/review-2026-04-24-smells.md) — post-integration review (mid-resolution)
+- [`orchestrator/AGENT.md`](orchestrator/AGENT.md) — engineering contract for the daemon package
 
 ## Archive
 
