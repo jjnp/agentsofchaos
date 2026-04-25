@@ -183,8 +183,6 @@ Deeper docs:
 - [`docs/runtime-adapters.md`](docs/runtime-adapters.md) — runtime contract
 - [`docs/implementation-plan.md`](docs/implementation-plan.md) — phased build
 - [`docs/adrs/`](docs/adrs/) — decision records
-- [`docs/review-2026-04-24-smells.md`](docs/review-2026-04-24-smells.md) — post-integration review (mid-resolution)
-- [`docs/review-2026-04-25-orchestrator-functional-gaps.md`](docs/review-2026-04-25-orchestrator-functional-gaps.md) — backend functional gap review
 - [`orchestrator/AGENT.md`](orchestrator/AGENT.md) — engineering contract for the daemon package
 
 ## Hackathon
