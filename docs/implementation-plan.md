@@ -94,19 +94,27 @@ Deliverables:
 - event outbox table and dispatch path
 - supervised outbox background dispatcher
 - transcript/event capture
-- SSE event streaming
+- SSE event streaming with replay-on-reconnect (`Last-Event-ID` header
+  + `?after_id=` query param + full-history fallback)
 - provisional running child node creation
 - successful child node finalization
 - failed/cancelled run handling
 - runtime artifact persistence strategy that leaves room for future adapters
+- runtime + sandbox `probe()` contracts and matching `GET /health/sandbox`
+  + `GET /health/runtime` operator diagnostics so an operator can tell
+  whether the configured backends are usable on this host without
+  starting a run
 
 Tests:
 - run state transitions
 - cancellation behavior
 - transcript persistence
-- event streaming contract
+- event streaming contract (frame `id:` lines, cursor honour, unknown
+  cursor falling back to full replay)
 - child node creation on success
 - failure behavior with artifact capture
+- health diagnostics return `unavailable` with operator-actionable
+  detail when the configured backend is misconfigured
 
 ## Phase 4 — typed context projection
 
@@ -116,12 +124,19 @@ Deliverables:
 - typed context snapshot domain model
 - context item model with provenance
 - context projection service from run provenance
+- runtime-specific projector that mines structured evidence from
+  the runtime's transcript (e.g. `PiContextProjector` mines
+  `read_files` from `read` tool calls + bash readers; deeper
+  extraction of decisions/todos/risks/symbols still pending model
+  assistance or richer instrumentation)
 - context diff queries
 - browser-facing context inspection API
 
 Tests:
 - context projection from controlled transcripts
 - provenance preservation
+- runtime-specific projector unit tests for evidence extraction (read
+  tool calls, bash reader extraction, malformed-message tolerance)
 - context diff behavior
 - serialization round-trips
 

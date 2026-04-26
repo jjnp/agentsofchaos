@@ -189,6 +189,11 @@ Every runtime adapter should support at minimum:
 - declaring its capabilities explicitly
 - final transcript capture
 - structured or parseable provenance for context projection
+- a cheap `probe()` that verifies host-side prerequisites and surfaces
+  a specific failure when the runtime cannot run (binary missing,
+  credentials unset, daemon unreachable). Used both at startup (fail
+  fast) and on every `GET /health/runtime` request (catch drift after
+  boot without a restart).
 
 The daemon must not hardcode product logic around one agent implementation.
 
@@ -255,7 +260,9 @@ The API is for the browser and local tooling.
 
 ### 7.1 Preferred surfaces
 - HTTP JSON for commands and queries
-- SSE for event streaming
+- SSE for event streaming with replay-on-reconnect (`Last-Event-ID`
+  header, `?after_id=<uuid>` query param, full-history fallback when
+  the cursor is unknown)
 - WebSocket only if necessary for a clearly justified use case
 
 Prompt-run creation should return the created run promptly while execution continues under a supervised background task. The browser observes progress through the event stream and may request cancellation by run id.
@@ -276,6 +283,16 @@ Recommended top-level operations:
 - diff nodes
 - stream events
 - cancel run
+
+### 7.3 Operator diagnostics
+The daemon exposes runtime/sandbox health checks distinct from the
+liveness `GET /health`:
+- `GET /health/sandbox` runs the configured sandbox backend's `probe()`
+- `GET /health/runtime` runs the configured runtime adapter's `probe()`
+
+Both return `200` in both ok and unavailable cases, with a JSON body
+carrying `{name, status, detail}` so monitoring can poll without
+confusing transport errors with diagnostic state.
 
 ## 8. Context architecture
 

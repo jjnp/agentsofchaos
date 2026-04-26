@@ -63,6 +63,12 @@ Minimum responsibilities:
 - persist or expose transcript/provenance artifacts
 - report terminal status
 - expose enough evidence for AoC context projection
+- expose a cheap `probe()` that verifies host-side prerequisites (binary
+  on PATH, credentials present, daemon reachable, …). The orchestrator
+  calls it at startup to fail loudly on misconfiguration and on every
+  `GET /health/runtime` request so monitoring catches drift after boot
+  without a daemon restart. Failures must raise with a specific,
+  operator-actionable message — not a generic boolean
 
 Non-responsibilities:
 - node creation policy

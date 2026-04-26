@@ -178,10 +178,13 @@ Remaining work:
 
 Current context projection is preliminary.
 
-Needed:
+Shipped since:
 
-- `PiContextProjector`
-- extraction of decisions/todos/risks/assumptions/read files/symbols
+- `PiContextProjector` lives at `infrastructure/runtime/pi/projection.py` and mines `read_files` from `read` tool calls + a narrow whitelist of bash readers (`cat`/`head`/`tail`/`less`/`more`/`type`); paths flow through `RuntimeExecutionResult.read_file_paths` into `ContextSnapshot.read_files` (deduplicated union with the inherited list)
+
+Still needed:
+
+- extraction of decisions/todos/risks/assumptions/symbols (these still inherit unchanged from source — model-assisted extraction or richer pi instrumentation, neither built yet)
 - citations to artifacts/events/session evidence
 - projection report artifacts
 
@@ -216,23 +219,32 @@ Known concern:
 
 - marking an event published before live publish can lose live delivery on a crash between those operations
 
-Needed:
+Shipped since:
 
-- explicit recorded/claimed/published model or replay-first contract
-- SSE `Last-Event-ID`
-- event replay cursor
-- idempotent client handling contract
+- SSE `Last-Event-ID` header is honoured on `GET /events/stream` reconnect; each frame carries an `id:` line so browser EventSource auto-reconnect resumes from the right cursor
+- `?after_id=<uuid>` query-param resume for manual reconnects (browsers can't set `Last-Event-ID` from script on initial connect)
+- unknown cursor falls back to full historical replay rather than silently leaving the client with a gap
+- subscribe-before-query in the SSE generator + dedup-by-id on the live queue eliminates the historical/live race window
+
+Still needed:
+
+- explicit recorded/claimed/published outbox model so a daemon crash between commit and publish doesn't permanently drop an event
+- idempotent client handling contract documented for SDK consumers
 
 ### 7. Artifact APIs
 
 Artifacts are persisted but not fully surfaced.
 
-Needed:
+Shipped since:
 
-- list artifacts by project/node/run
-- get artifact metadata
-- safe text/json content retrieval
-- redaction/content policy
+- `GET /artifacts?node_id=…|run_id=…` lists artifacts scoped by a node or run
+- `GET /artifacts/{id}` returns artifact metadata
+- `GET /artifacts/{id}/content` streams the raw payload for download / inline preview
+- frontend `ArtifactsView` renders inline JSON for report kinds and download links for everything else
+
+Still needed:
+
+- redaction / content-policy hooks for sensitive artifacts
 
 ### 8. State integrity lifecycle
 
