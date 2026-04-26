@@ -1,4 +1,4 @@
-import type { Node, NodeId } from '../orchestrator/contracts';
+import type { NodeId } from '../orchestrator/contracts';
 
 import {
 	mergeSourceIds,
@@ -6,6 +6,7 @@ import {
 	type CanvasPoint,
 	type CanvasViewport,
 	type ConnectionSegment,
+	type GraphNode,
 	type LayoutMode,
 	type MergedConnectionSegment,
 	type NodePlacement
@@ -25,8 +26,8 @@ export const clampScale = (scale: number, minScale: number, maxScale: number) =>
 const placementMap = (placements: readonly NodePlacement[]) =>
 	new Map<NodeId, NodePlacement>(placements.map((p) => [p.nodeId, p]));
 
-const getChildrenMap = (nodes: readonly Node[]) => {
-	const map = new Map<NodeId | null, Node[]>();
+const getChildrenMap = (nodes: readonly GraphNode[]) => {
+	const map = new Map<NodeId | null, GraphNode[]>();
 	for (const node of nodes) {
 		const parent = structuralParentId(node);
 		const siblings = map.get(parent) ?? [];
@@ -36,7 +37,7 @@ const getChildrenMap = (nodes: readonly Node[]) => {
 	return map;
 };
 
-export function getNodeDepth(target: Node, byId: ReadonlyMap<NodeId, Node>): number {
+export function getNodeDepth(target: GraphNode, byId: ReadonlyMap<NodeId, GraphNode>): number {
 	let depth = 0;
 	let parent = structuralParentId(target);
 	const visited = new Set<NodeId>();
@@ -51,8 +52,8 @@ export function getNodeDepth(target: Node, byId: ReadonlyMap<NodeId, Node>): num
 	return depth;
 }
 
-export function getMaxNodeDepth(nodes: readonly Node[]): number {
-	const byId = new Map<NodeId, Node>(nodes.map((n) => [n.id, n]));
+export function getMaxNodeDepth(nodes: readonly GraphNode[]): number {
+	const byId = new Map<NodeId, GraphNode>(nodes.map((n) => [n.id, n]));
 	return nodes.reduce((max, node) => Math.max(max, getNodeDepth(node, byId)), 0);
 }
 
@@ -69,7 +70,7 @@ function getRootOrigin(index: number, count: number): CanvasPoint {
 
 function placeRingChildren(
 	parentId: NodeId,
-	childrenMap: Map<NodeId | null, Node[]>,
+	childrenMap: Map<NodeId | null, GraphNode[]>,
 	placements: NodePlacement[],
 	origin: CanvasPoint,
 	radius: number,
@@ -100,7 +101,7 @@ function placeRingChildren(
 	}
 }
 
-export function computeRingLayout(nodes: readonly Node[]): NodePlacement[] {
+export function computeRingLayout(nodes: readonly GraphNode[]): NodePlacement[] {
 	const childrenMap = getChildrenMap(nodes);
 	const placements: NodePlacement[] = [];
 	const roots = childrenMap.get(null) ?? [];
@@ -120,12 +121,12 @@ export function computeRingLayout(nodes: readonly Node[]): NodePlacement[] {
 	return placements;
 }
 
-export function computeTreeLayout(nodes: readonly Node[]): NodePlacement[] {
+export function computeTreeLayout(nodes: readonly GraphNode[]): NodePlacement[] {
 	const childrenMap = getChildrenMap(nodes);
-	const queue: Array<{ node: Node; depth: number }> = (childrenMap.get(null) ?? []).map(
+	const queue: Array<{ node: GraphNode; depth: number }> = (childrenMap.get(null) ?? []).map(
 		(node) => ({ node, depth: 0 })
 	);
-	const levels: Node[][] = [];
+	const levels: GraphNode[][] = [];
 	while (queue.length > 0) {
 		const current = queue.shift();
 		if (!current) continue;
@@ -146,7 +147,7 @@ export function computeTreeLayout(nodes: readonly Node[]): NodePlacement[] {
 }
 
 export function computeForceLayout(
-	nodes: readonly Node[],
+	nodes: readonly GraphNode[],
 	basePlacements: readonly NodePlacement[]
 ): NodePlacement[] {
 	const baseLookup = placementMap(basePlacements);
@@ -212,7 +213,7 @@ export function computeLayoutPlacements({
 	basePlacements,
 	mode
 }: {
-	nodes: readonly Node[];
+	nodes: readonly GraphNode[];
 	basePlacements: readonly NodePlacement[];
 	mode: LayoutMode;
 }): NodePlacement[] {
@@ -228,7 +229,7 @@ export function computeLayoutPlacements({
 }
 
 export function getConnectionSegments(
-	nodes: readonly Node[],
+	nodes: readonly GraphNode[],
 	placements: readonly NodePlacement[]
 ): ConnectionSegment[] {
 	const lookup = placementMap(placements);
@@ -251,7 +252,7 @@ export function getConnectionSegments(
 	});
 }
 
-const getNodeConnectionOffset = (node: Node) =>
+const getNodeConnectionOffset = (node: GraphNode) =>
 	structuralParentId(node) === null
 		? ROOT_NODE_CONNECTION_OFFSET
 		: CHILD_NODE_CONNECTION_OFFSET;
@@ -277,11 +278,11 @@ function trimSegment(
 }
 
 export function getMergedConnectionSegments(
-	nodes: readonly Node[],
+	nodes: readonly GraphNode[],
 	placements: readonly NodePlacement[]
 ): MergedConnectionSegment[] {
 	const lookup = placementMap(placements);
-	const byId = new Map<NodeId, Node>(nodes.map((n) => [n.id, n]));
+	const byId = new Map<NodeId, GraphNode>(nodes.map((n) => [n.id, n]));
 	return nodes.flatMap((node) => {
 		const targetPlacement = lookup.get(node.id);
 		if (!targetPlacement) return [];

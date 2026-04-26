@@ -2,6 +2,7 @@
 	import { tick } from 'svelte';
 
 	import type { GraphStore } from '$lib/agent-graph/state.svelte';
+	import { isPendingNode } from '$lib/agent-graph/types';
 	import type { CodeSnapshot, Run } from '$lib/orchestrator/contracts';
 
 	import { nodeKindLabel, nodeStatusLabel } from '../agent-graph/node-styles';
@@ -23,12 +24,14 @@
 	let activeTab = $state<DetailTab>('output');
 
 	const node = $derived(store.selectedNode);
-	const isMergeNode = $derived(node?.kind === 'merge');
+	const pendingNode = $derived(node && isPendingNode(node) ? node : null);
+	const durableNode = $derived(node && !isPendingNode(node) ? node : null);
+	const isMergeNode = $derived(durableNode?.kind === 'merge');
 	const originatingRun = $derived<Run | null>(
 		node?.originating_run_id ? (store.runsById.get(node.originating_run_id) ?? null) : null
 	);
 	const codeSnapshot = $derived<CodeSnapshot | null>(
-		node ? (store.codeSnapshotsById.get(node.code_snapshot_id) ?? null) : null
+		durableNode ? (store.codeSnapshotsById.get(durableNode.code_snapshot_id) ?? null) : null
 	);
 	const recentEvents = $derived(store.events.slice(-200));
 
@@ -48,7 +51,14 @@
 	});
 
 	$effect(() => {
+		if (pendingNode && activeTab !== 'output' && activeTab !== 'events') {
+			activeTab = 'output';
+		}
+	});
+
+	$effect(() => {
 		if (!node) return;
+		if (isPendingNode(node)) return;
 		const snapshotId = node.code_snapshot_id;
 		if (store.codeSnapshotsById.has(snapshotId)) return;
 		void store.fetchCodeSnapshot(snapshotId).catch(() => {
@@ -102,7 +112,9 @@
 			<div class="meta-line">
 				<span class="chip" data-kind={node.kind}>{nodeKindLabel(node.kind)}</span>
 				<span class="chip status" data-status={node.status}>{nodeStatusLabel(node.status)}</span>
-				{#if codeSnapshot}
+				{#if pendingNode}
+					<code class="mono dim">planned {node.id.slice(0, 8)}</code>
+				{:else if codeSnapshot}
 					<code class="mono code-chip" title={codeSnapshot.commit_sha}>
 						{codeSnapshot.commit_sha.slice(0, 8)}
 					</code>
@@ -166,7 +178,7 @@
 				class:tab--active={activeTab === 'changes'}
 				role="tab"
 				aria-selected={activeTab === 'changes'}
-				disabled={!node}
+				disabled={!durableNode}
 				onclick={() => (activeTab = 'changes')}
 			>
 				Changes
@@ -177,7 +189,7 @@
 				class:tab--active={activeTab === 'context'}
 				role="tab"
 				aria-selected={activeTab === 'context'}
-				disabled={!node}
+				disabled={!durableNode}
 				onclick={() => (activeTab = 'context')}
 			>
 				Context
@@ -200,7 +212,7 @@
 				class:tab--active={activeTab === 'artifacts'}
 				role="tab"
 				aria-selected={activeTab === 'artifacts'}
-				disabled={!node}
+				disabled={!durableNode}
 				onclick={() => (activeTab = 'artifacts')}
 			>
 				Artifacts
@@ -236,16 +248,16 @@
 				</div>
 			{:else if activeTab === 'output' && node}
 				<TerminalOutput {store} {node} variant="full" />
-			{:else if activeTab === 'changes' && node}
-				<NodeDiffViewer {store} {node} />
-			{:else if activeTab === 'context' && node}
-				<ContextSnapshotView {store} {node} />
-			{:else if activeTab === 'merge' && node && isMergeNode}
+			{:else if activeTab === 'changes' && durableNode}
+				<NodeDiffViewer {store} node={durableNode} />
+			{:else if activeTab === 'context' && durableNode}
+				<ContextSnapshotView {store} node={durableNode} />
+			{:else if activeTab === 'merge' && durableNode && isMergeNode}
 				<div class="merge-scroll">
-					<MergeReport {store} {node} />
+					<MergeReport {store} node={durableNode} />
 				</div>
-			{:else if activeTab === 'artifacts' && node}
-				<ArtifactsView {store} {node} />
+			{:else if activeTab === 'artifacts' && durableNode}
+				<ArtifactsView {store} node={durableNode} />
 			{/if}
 		</div>
 	</section>

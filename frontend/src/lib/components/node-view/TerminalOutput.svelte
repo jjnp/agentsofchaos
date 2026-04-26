@@ -2,11 +2,12 @@
 	import { tick } from 'svelte';
 
 	import type { GraphStore } from '$lib/agent-graph/state.svelte';
-	import type { Node, Run } from '$lib/orchestrator/contracts';
+	import type { GraphNode } from '$lib/agent-graph/types';
+	import type { Run } from '$lib/orchestrator/contracts';
 
 	interface Props {
 		store: GraphStore;
-		node: Node;
+		node: GraphNode;
 		variant?: 'compact' | 'full';
 	}
 
