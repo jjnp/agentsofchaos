@@ -106,6 +106,7 @@ class OrchestratorService:
         )
         self._outbox_worker = OutboxDispatchWorker(events=events)
         self._queries = QueryService(session_factory=session_factory)
+        self._git_service = git_service
         self._diffs = DiffApplicationService(
             session_factory=session_factory,
             git_service=git_service,
@@ -216,6 +217,27 @@ class OrchestratorService:
 
     async def get_node_diff(self, *, project_id: UUID, node_id: UUID) -> NodeDiff:
         return await self._diffs.get_node_diff(project_id=project_id, node_id=node_id)
+
+    async def read_node_file(
+        self, *, project_id: UUID, node_id: UUID, path: str
+    ) -> bytes:
+        """Return raw bytes of `path` at this node's code snapshot.
+
+        Resolves the chain node → code_snapshot → commit_sha, then
+        reads the blob from the project's git repository. Used by the
+        download endpoint so a viewer can pull any agent-touched file
+        out without scripting against the daemon.
+        """
+        node = await self._queries.get_node(project_id=project_id, node_id=node_id)
+        snapshot = await self._queries.get_code_snapshot(
+            project_id=project_id, snapshot_id=node.code_snapshot_id
+        )
+        project = await self._queries.get_project(project_id)
+        return self._git_service.read_file_at(
+            Path(project.root_path),
+            commit_sha=snapshot.commit_sha,
+            path=path,
+        )
 
     async def get_node_context_diff(
         self, *, project_id: UUID, node_id: UUID

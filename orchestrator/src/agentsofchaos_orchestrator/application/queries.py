@@ -18,6 +18,7 @@ from agentsofchaos_orchestrator.domain.models import (
     EventRecord,
     GraphSnapshot,
     Node,
+    Project,
     Run,
 )
 from agentsofchaos_orchestrator.infrastructure.repositories import build_graph_snapshot
@@ -44,6 +45,13 @@ class QueryService:
                     f"Node {node_id} does not belong to project {project_id}"
                 )
             return node
+
+    async def get_project(self, project_id: UUID) -> Project:
+        async with self._unit_of_work() as unit_of_work:
+            project = await unit_of_work.projects.get(project_id)
+            if project is None:
+                raise ProjectNotFoundError(f"Unknown project: {project_id}")
+            return project
 
     async def get_code_snapshot(
         self, *, project_id: UUID, snapshot_id: UUID

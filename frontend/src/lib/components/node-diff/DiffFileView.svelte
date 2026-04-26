@@ -3,9 +3,14 @@
 
 	interface Props {
 		file: FileDiff | null;
+		// URL to download the raw file at the parent node's snapshot.
+		// Provided by `NodeDiffViewer` once the node id + path are known;
+		// falls through as `null` for `deleted` files (nothing to fetch
+		// at the new snapshot — the file is gone).
+		downloadUrl?: string | null;
 	}
 
-	let { file }: Props = $props();
+	let { file, downloadUrl = null }: Props = $props();
 </script>
 
 {#if !file}
@@ -21,6 +26,11 @@
 				</span>
 				<span class="add">+{file.additions}</span>
 				<span class="del">-{file.deletions}</span>
+				{#if downloadUrl}
+					<a class="download" href={downloadUrl} download={file.path.split('/').pop()}>
+						Download
+					</a>
+				{/if}
 			</div>
 		</header>
 
@@ -94,6 +104,23 @@
 	}
 	.del {
 		color: var(--color-danger);
+	}
+	.download {
+		margin-left: auto;
+		padding: 0.18rem 0.55rem;
+		border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+		background: color-mix(in srgb, var(--color-surface-elevated) 80%, black);
+		color: var(--color-text);
+		border-radius: 999px;
+		font-family: var(--font-mono);
+		font-size: 0.66rem;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		text-decoration: none;
+	}
+	.download:hover {
+		border-color: color-mix(in srgb, var(--color-primary) 44%, var(--color-border));
+		color: var(--color-primary);
 	}
 
 	.hunks-wrap {

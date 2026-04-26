@@ -7,7 +7,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 
 from agentsofchaos_orchestrator.api.dependencies import (
     get_event_bus,
@@ -106,6 +106,36 @@ async def get_node(
 ) -> NodeResponse:
     node = await service.get_node(project_id=project_id, node_id=node_id)
     return NodeResponse.from_domain(node)
+
+
+@router.get("/{project_id}/nodes/{node_id}/files/{path:path}/content")
+async def get_node_file_content(
+    project_id: UUID,
+    node_id: UUID,
+    path: str,
+    service: ServiceDependency,
+) -> Response:
+    """Stream raw bytes of a file at this node's code snapshot.
+
+    Resolves node → code snapshot → commit, then `git cat-file blob`s
+    the requested path. Binary-safe (returns `application/octet-stream`).
+    A `Content-Disposition: attachment` header lets the browser save
+    the file with its basename. Use this to download any file the
+    agent created or modified at the node — the diff endpoint already
+    shows what changed; this gets you the actual content.
+    """
+    content = await service.read_node_file(
+        project_id=project_id, node_id=node_id, path=path
+    )
+    filename = Path(path).name or "download"
+    return Response(
+        content=content,
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-cache",
+        },
+    )
 
 
 @router.get(

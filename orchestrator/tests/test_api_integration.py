@@ -820,3 +820,26 @@ def test_merge_same_node_is_422(client: TestClient, repo: Path) -> None:
     assert r.json()["error"]["code"] == "MERGE_INVALID_NODES"
 
 
+
+
+def test_node_file_content_endpoint_returns_raw_bytes(
+    client: TestClient, repo: Path
+) -> None:
+    """`GET /nodes/{id}/files/{path}/content` reads bytes from git at
+    the node's commit and returns them as a download. README.md was
+    seeded into the fixture repo; the root node's snapshot should
+    have it verbatim.
+    """
+    project_id = client.post("/projects/open", json={"path": str(repo)}).json()["id"]
+    root = client.get(f"/projects/{project_id}/graph").json()["nodes"][0]
+
+    r = client.get(
+        f"/projects/{project_id}/nodes/{root['id']}/files/README.md/content"
+    )
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"].startswith("application/octet-stream")
+    assert 'attachment; filename="README.md"' in r.headers["content-disposition"]
+    # Fixture from initialize_test_repository seeds a README; just
+    # verify we got non-empty bytes back (the helper's exact content
+    # is its concern, not this test's).
+    assert len(r.content) > 0

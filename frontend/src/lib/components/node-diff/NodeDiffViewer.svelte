@@ -139,7 +139,12 @@
 	{:else if diff}
 		<div class="split">
 			<DiffFileList files={diff.files} {selectedPath} onSelect={(path) => (selectedPath = path)} />
-			<DiffFileView file={selectedFile} />
+			<DiffFileView
+				file={selectedFile}
+				downloadUrl={selectedFile && selectedFile.change_type !== 'deleted'
+					? store.nodeFileContentUrl(node.id, selectedFile.path)
+					: null}
+			/>
 		</div>
 	{/if}
 </section>

@@ -161,6 +161,21 @@ export class OrchestratorClient {
 		return this.#url(`/projects/${projectId}/artifacts/${artifactId}/content`);
 	}
 
+	/**
+	 * URL for downloading the raw bytes of `path` at the given node's
+	 * code snapshot. Backend resolves node → snapshot → commit and
+	 * `git cat-file blob`s the path. Use as an `<a href>` target —
+	 * the daemon sets `Content-Disposition: attachment` so the browser
+	 * saves it with the file's basename.
+	 */
+	nodeFileContentUrl(projectId: ProjectId, nodeId: NodeId, path: string): string {
+		const segments = path
+			.split('/')
+			.map((segment) => encodeURIComponent(segment))
+			.join('/');
+		return this.#url(`/projects/${projectId}/nodes/${nodeId}/files/${segments}/content`);
+	}
+
 	async promptNode(projectId: ProjectId, nodeId: NodeId, prompt: string): Promise<Run> {
 		return this.#post(
 			`/projects/${projectId}/nodes/${nodeId}/runs/prompt`,

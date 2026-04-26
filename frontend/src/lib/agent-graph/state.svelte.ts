@@ -250,6 +250,11 @@ export class GraphStore {
 		return this.#client.artifactContentUrl(projectId, artifactId);
 	}
 
+	nodeFileContentUrl(nodeId: NodeId, path: string): string {
+		const projectId = this.#requireProjectId();
+		return this.#client.nodeFileContentUrl(projectId, nodeId, path);
+	}
+
 	select(nodeId: NodeId | null): void {
 		this.selectedNodeId = nodeId;
 	}

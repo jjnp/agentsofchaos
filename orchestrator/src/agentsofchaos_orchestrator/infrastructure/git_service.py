@@ -284,6 +284,37 @@ class GitService:
             )
         return tuple(stages)
 
+    def read_file_at(
+        self,
+        repository_root: Path,
+        *,
+        commit_sha: str,
+        path: str,
+    ) -> bytes:
+        """Read a file's bytes at a specific commit.
+
+        Uses `git cat-file blob` so binary files survive intact (no
+        re-encoding to text). Returns the raw bytes; caller is
+        responsible for content-type sniffing if it matters. Raises
+        `InvalidRepositoryError` if the commit or path doesn't exist.
+        """
+        self._ensure_commit_sha(commit_sha)
+        normalized = path.strip().lstrip("/")
+        if not normalized:
+            raise InvalidRepositoryError("path is required")
+        completed = subprocess.run(
+            ["git", "cat-file", "blob", f"{commit_sha}:{normalized}"],
+            cwd=repository_root,
+            capture_output=True,
+            check=False,
+        )
+        if completed.returncode != 0:
+            stderr = completed.stderr.decode("utf-8", errors="replace").strip()
+            raise InvalidRepositoryError(
+                f"git cat-file failed for {commit_sha}:{normalized}: {stderr}"
+            )
+        return completed.stdout
+
     def _ensure_commit_sha(self, value: str) -> str:
         if len(value) != 40:
             raise InvalidRepositoryError(f"Value is not a full commit SHA: {value!r}")
