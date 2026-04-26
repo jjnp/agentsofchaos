@@ -4,6 +4,7 @@
 
 	import DiffFileList from './DiffFileList.svelte';
 	import DiffFileView from './DiffFileView.svelte';
+	import DiffSummaryCard from './DiffSummaryCard.svelte';
 
 	interface Props {
 		store: GraphStore;
@@ -54,21 +55,32 @@
 			loading = false;
 		}
 	}
+
+	const cardTitle = 'Changes';
+	const cardSourceLabel = $derived<string | null>(
+		diff
+			? `${diff.base_commit_sha ? diff.base_commit_sha.slice(0, 12) : 'empty tree'} → ${diff.head_commit_sha.slice(0, 12)}`
+			: null
+	);
+	const cardBody = $derived(() => {
+		if (!diff) return 'Diff not loaded.';
+		const { files, additions, deletions } = diff.totals;
+		if (files === 0) return 'No changes between this node and its parent.';
+		const fileLabel = files === 1 ? 'file' : 'files';
+		return `${files} ${fileLabel} changed — +${additions}, -${deletions}`;
+	});
 </script>
 
 <section class="viewer">
-	<header class="totals">
-		<div class="left">
-			<p class="label">Changes</p>
-			{#if diff}
-				<p class="commit mono">
-					{diff.base_commit_sha ? diff.base_commit_sha.slice(0, 12) : 'empty tree'}
-					→ {diff.head_commit_sha.slice(0, 12)}
-				</p>
-			{:else}
-				<p class="commit mono muted">Diff not loaded.</p>
-			{/if}
-		</div>
+	<DiffSummaryCard
+		title={cardTitle}
+		body={cardBody()}
+		sourceLabel={cardSourceLabel}
+		loading={loading && !diff}
+		error={null}
+	/>
+
+	<div class="totals-bar">
 		<div class="totals-grid">
 			<div class="stat">
 				<span class="num">{diff?.totals.files ?? 0}</span>
@@ -82,11 +94,11 @@
 				<span class="num">-{diff?.totals.deletions ?? 0}</span>
 				<span class="cap">removed</span>
 			</div>
-			<button type="button" class="refresh" onclick={refresh} disabled={loading}>
-				{loading ? 'Loading…' : 'Refresh'}
-			</button>
 		</div>
-	</header>
+		<button type="button" class="refresh" onclick={refresh} disabled={loading}>
+			{loading ? 'Loading…' : 'Refresh diff'}
+		</button>
+	</div>
 
 	{#if error}
 		<p class="error">{error}</p>
@@ -111,28 +123,11 @@
 		gap: 0.6rem;
 		min-height: 0;
 	}
-	.totals {
+	.totals-bar {
 		display: flex;
-		justify-content: space-between;
 		align-items: center;
-		gap: 1rem;
-	}
-	.left {
-		display: grid;
-		gap: 0.18rem;
-	}
-	.label {
-		font-size: 0.68rem;
-		letter-spacing: 0.18em;
-		text-transform: uppercase;
-		color: var(--color-text-muted);
-	}
-	.commit {
-		font-size: 0.78rem;
-		color: var(--color-text);
-	}
-	.muted {
-		color: var(--color-text-muted);
+		justify-content: space-between;
+		gap: 0.6rem;
 	}
 	.totals-grid {
 		display: flex;
@@ -201,10 +196,6 @@
 		min-height: 0;
 		overflow: hidden;
 	}
-	.mono {
-		font-family: var(--font-mono);
-	}
-
 	@media (max-width: 1100px) {
 		.split {
 			grid-template-columns: 1fr;
