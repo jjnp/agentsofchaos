@@ -30,15 +30,15 @@ palette="$(mktemp --suffix=.png)"
 filters="setpts=PTS/3,fps=6,scale=720:-1:flags=lanczos"
 
 ffmpeg -y -loglevel error -i "${src}" -vf "${filters},palettegen=stats_mode=diff" "${palette}"
-# `-final_delay 300` parks the gif on its last frame for 3 seconds
+# `-final_delay 1500` parks the gif on its last frame for 15 seconds
 # before looping. The value is in centiseconds and lives in the GIF
 # Graphic Control Extension's per-frame delay field — pure metadata,
 # zero filesize impact (one uint16 instead of zero). Gives a viewer
-# time to read the integrated diff before the recording loops back
-# to the project-open frame.
+# real time to read the integrated diff before the recording loops
+# back to the project-open frame.
 ffmpeg -y -loglevel error -i "${src}" -i "${palette}" \
   -lavfi "${filters} [v]; [v][1:v] paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle" \
-  -final_delay 300 \
+  -final_delay 1500 \
   "${dest}"
 
 rm -f "${palette}"
