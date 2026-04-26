@@ -8,6 +8,7 @@
 		ContextSnapshot,
 		Node
 	} from '$lib/orchestrator/contracts';
+	import PiSummaryView from '../pi-summary/PiSummaryView.svelte';
 
 	interface Props {
 		store: GraphStore;
@@ -185,10 +186,7 @@
 		<p class="error small">{snapshotError}</p>
 	{:else if snapshot}
 		{#if snapshot.summary}
-			<section class="summary">
-				<p class="label">Summary</p>
-				<pre class="summary-text">{snapshot.summary}</pre>
-			</section>
+			<PiSummaryView summary={snapshot.summary} label="Pi summary" />
 		{/if}
 
 		{#if fileCounts}
@@ -354,25 +352,6 @@
 	}
 	.change {
 		color: var(--color-primary);
-	}
-	.summary {
-		display: grid;
-		gap: 0.35rem;
-		padding: 0.65rem 0.85rem;
-		border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
-		border-radius: 1rem;
-		background: rgb(12 13 10 / 0.78);
-	}
-	.summary-text {
-		font: inherit;
-		font-size: 0.78rem;
-		line-height: 1.55;
-		color: var(--color-text);
-		white-space: pre-wrap;
-		word-break: break-word;
-		margin: 0;
-		max-height: 12rem;
-		overflow: auto;
 	}
 	.filebar {
 		display: flex;
