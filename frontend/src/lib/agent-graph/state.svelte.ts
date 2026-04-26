@@ -326,6 +326,15 @@ export class GraphStore {
 	}
 
 	#handleEvent(event: EventRecord): void {
+		// Dedupe by id. Live SSE delivery and the Refresh-poll's
+		// `listEvents` round-trip can both deliver the same event:
+		// Refresh resets `this.events` to the full API list, and
+		// shortly after, an in-flight SSE frame for an event already
+		// in that list arrives via `#handleEvent`. Without this guard
+		// keyed `{#each events as event (event.id)}` blocks (notably
+		// `TerminalOutput`) hit `each_key_duplicate` and Svelte 5
+		// throws mid-render, breaking downstream reactivity.
+		if (this.events.some((existing) => existing.id === event.id)) return;
 		this.events = [...this.events, event];
 		switch (event.topic) {
 			case 'root_node_created':

@@ -27,7 +27,7 @@ dest="${dest_dir}/demo.gif"
 # file in the same ballpark as the noop-runtime version. Scale 960px
 # wide so the inspector text stays legible.
 palette="$(mktemp --suffix=.png)"
-filters="setpts=PTS/2,fps=6,scale=720:-1:flags=lanczos"
+filters="setpts=PTS/3,fps=6,scale=720:-1:flags=lanczos"
 
 ffmpeg -y -loglevel error -i "${src}" -vf "${filters},palettegen=stats_mode=diff" "${palette}"
 ffmpeg -y -loglevel error -i "${src}" -i "${palette}" \
