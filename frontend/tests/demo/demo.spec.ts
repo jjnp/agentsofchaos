@@ -322,6 +322,19 @@ async function tourTabsOn(
 		if (await button.count()) {
 			await button.first().click();
 			await beat(2600);
+			// On the Context tab, ContextSnapshotView opens in DIFF mode
+			// (when the node has a parent) — that's the section-level
+			// diff against the source. Hold there for a moment, then
+			// flip to FULL so PiSummaryView's structured summary card
+			// gets screen time too. The radio stays in FULL for the
+			// rest of this node's selection — next tab click moves on.
+			if (tab === 'Context') {
+				const fullToggle = page.getByRole('radio', { name: /^Full$/ });
+				if (await fullToggle.count()) {
+					await fullToggle.first().click().catch(() => {});
+					await beat(2600);
+				}
+			}
 		}
 	}
 }
