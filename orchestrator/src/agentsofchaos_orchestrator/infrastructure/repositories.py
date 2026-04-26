@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Select, select, update
+from sqlalchemy import Select, and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentsofchaos_orchestrator.domain.enums import (
@@ -558,6 +558,41 @@ class EventRepository:
             select(EventRecordORM)
             .where(EventRecordORM.project_id == str(project_id))
             .order_by(EventRecordORM.created_at.asc())
+        )
+        records = (await self._session.scalars(statement)).all()
+        return tuple(_to_event(record) for record in records)
+
+    async def list_by_project_after(
+        self,
+        project_id: UUID,
+        after_event_id: UUID,
+    ) -> tuple[EventRecord, ...] | None:
+        """Events created strictly after the given id, or `None` if the
+        anchor event isn't found for this project (e.g. a stale
+        Last-Event-ID from a different database).
+
+        The caller treats `None` as "fall back to full replay" — that is
+        the SSE-reconnect contract: when the server can't honour
+        `Last-Event-ID`, the client gets the full history rather than a
+        silent gap. Filter is on `(created_at, id)` to keep the order
+        stable for events written in the same database tick.
+        """
+        anchor = await self._session.get(EventRecordORM, str(after_event_id))
+        if anchor is None or anchor.project_id != str(project_id):
+            return None
+        statement: Select[tuple[EventRecordORM]] = (
+            select(EventRecordORM)
+            .where(
+                EventRecordORM.project_id == str(project_id),
+                or_(
+                    EventRecordORM.created_at > anchor.created_at,
+                    and_(
+                        EventRecordORM.created_at == anchor.created_at,
+                        EventRecordORM.id > anchor.id,
+                    ),
+                ),
+            )
+            .order_by(EventRecordORM.created_at.asc(), EventRecordORM.id.asc())
         )
         records = (await self._session.scalars(statement)).all()
         return tuple(_to_event(record) for record in records)

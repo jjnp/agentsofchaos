@@ -112,3 +112,56 @@ async def test_create_root_node_is_idempotent_after_auto_root(tmp_path: Path) ->
     assert len((await service.get_graph(project.id)).nodes) == 1
 
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_list_events_since_returns_strict_suffix(tmp_path: Path) -> None:
+    """The SSE replay-on-reconnect path on the route layer leans on
+    `list_events_since`: given an event id the client has already seen,
+    return only the events that landed after it. The cursor itself is
+    excluded from the result. An unknown cursor returns `None` so the
+    route layer can fall back to a full replay rather than silently
+    dropping the gap.
+    """
+    repository_root = tmp_path / "repo"
+    initialize_test_repository(repository_root)
+    database_path = tmp_path / "orchestrator.db"
+
+    settings = Settings(database_url=f"sqlite+aiosqlite:///{database_path}")
+    engine = create_engine(settings)
+    session_factory = create_session_factory(engine)
+    await initialize_database(engine)
+
+    service = OrchestratorService(
+        session_factory=session_factory,
+        settings=settings,
+        git_service=GitService(),
+        event_bus=InMemoryEventBus(),
+    )
+
+    project = await service.open_project(repository_root)
+    initial_events = await service.list_events(project.id)
+    assert len(initial_events) == 2  # project_opened + root_node_created
+    cursor = initial_events[0]
+
+    # Resume from the first event — should yield only the second.
+    suffix = await service.list_events_since(project.id, after_event_id=cursor.id)
+    assert suffix is not None
+    assert len(suffix) == 1
+    assert suffix[0].id == initial_events[1].id
+
+    # Resume from the latest known event — should yield zero events.
+    tail = initial_events[-1]
+    after_tail = await service.list_events_since(project.id, after_event_id=tail.id)
+    assert after_tail is not None
+    assert after_tail == ()
+
+    # Bogus cursor — should return None so the route falls back to
+    # full historical replay (avoids silent gaps when an operator
+    # switches databases between reconnects).
+    from uuid import uuid4
+
+    missing = await service.list_events_since(project.id, after_event_id=uuid4())
+    assert missing is None
+
+    await engine.dispose()

@@ -391,3 +391,77 @@ def test_pi_runtime_adapter_identifies_itself_as_pi() -> None:
     adapter = PiRuntimeAdapter()
     assert adapter.runtime_kind is RuntimeKind.PI
     assert RuntimeCapability.RPC_STREAMING in adapter.capabilities
+
+
+def test_rewrite_session_cwd_replaces_stale_path(tmp_path: Path) -> None:
+    """The pi session-fork fix: when the parent's session JSONL points at
+    a worktree that's been cleaned up, rewrite the cwd so pi's
+    `switch_session` sanity check passes. Returns the previous value
+    on rewrite, None when no rewrite was needed.
+    """
+    import json as _json
+
+    from agentsofchaos_orchestrator.infrastructure.runtime.pi.adapter import (
+        _rewrite_session_cwd,
+    )
+
+    session = tmp_path / "session.jsonl"
+    stale_cwd = tmp_path / "long-gone-worktree"
+    new_cwd = tmp_path / "new-worktree"
+    new_cwd.mkdir()
+    # Pi session JSONL: header line + a couple of message entries to
+    # ensure we don't truncate the body.
+    session.write_text(
+        "\n".join(
+            [
+                _json.dumps(
+                    {"type": "session", "version": 3, "id": "x", "cwd": str(stale_cwd)}
+                ),
+                _json.dumps({"type": "model_change", "id": "m1"}),
+                _json.dumps({"type": "message", "id": "msg1"}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    previous = _rewrite_session_cwd(session, new_cwd)
+    assert previous == str(stale_cwd)
+    lines = session.read_text(encoding="utf-8").splitlines()
+    header = _json.loads(lines[0])
+    assert header["cwd"] == str(new_cwd)
+    # Body unchanged.
+    assert _json.loads(lines[1])["type"] == "model_change"
+    assert _json.loads(lines[2])["type"] == "message"
+
+    # Calling again is a no-op (cwd now valid).
+    second = _rewrite_session_cwd(session, new_cwd)
+    assert second is None
+
+
+def test_rewrite_session_cwd_skips_unparseable_or_missing(tmp_path: Path) -> None:
+    from agentsofchaos_orchestrator.infrastructure.runtime.pi.adapter import (
+        _rewrite_session_cwd,
+    )
+
+    new_cwd = tmp_path / "new"
+    new_cwd.mkdir()
+
+    # Missing file → None, no exception.
+    assert _rewrite_session_cwd(tmp_path / "nope.jsonl", new_cwd) is None
+
+    # Empty file → None.
+    empty = tmp_path / "empty.jsonl"
+    empty.write_text("", encoding="utf-8")
+    assert _rewrite_session_cwd(empty, new_cwd) is None
+
+    # Garbage first line → None, file untouched.
+    garbage = tmp_path / "garbage.jsonl"
+    garbage.write_text("not json at all\n", encoding="utf-8")
+    assert _rewrite_session_cwd(garbage, new_cwd) is None
+    assert garbage.read_text(encoding="utf-8") == "not json at all\n"
+
+    # First line isn't a session header → None.
+    wrong = tmp_path / "wrong.jsonl"
+    wrong.write_text('{"type": "message"}\n', encoding="utf-8")
+    assert _rewrite_session_cwd(wrong, new_cwd) is None

@@ -24,6 +24,7 @@ import {
 	type ContextDiff,
 	type ContextSnapshot,
 	type ContextSnapshotId,
+	type EventId,
 	type EventRecord,
 	type EventTopic,
 	type Graph,
@@ -218,12 +219,23 @@ export class OrchestratorClient {
 			onTopic?: (topic: EventTopic, event: EventRecord) => void;
 			onError?: (err: Event) => void;
 			onOpen?: () => void;
-		}
+		},
+		options: { afterEventId?: EventId } = {}
 	): () => void {
 		if (typeof EventSource === 'undefined') {
 			throw new Error('subscribeEvents requires a browser EventSource');
 		}
-		const url = `${this.#baseUrl}/projects/${projectId}/events/stream`;
+		// `Last-Event-ID` can't be set on `EventSource` from script — the
+		// browser only attaches it on auto-reconnect after a drop. For
+		// the manual-reconnect path (e.g. `disconnect()` then
+		// `connect()` again) we pass the cursor as `?after_id=` so the
+		// daemon can replay missed events from that point.
+		const params = new URLSearchParams();
+		if (options.afterEventId) params.set('after_id', options.afterEventId);
+		const query = params.toString();
+		const url = `${this.#baseUrl}/projects/${projectId}/events/stream${
+			query ? `?${query}` : ''
+		}`;
 		const source = new EventSource(url);
 
 		if (handlers.onOpen) {

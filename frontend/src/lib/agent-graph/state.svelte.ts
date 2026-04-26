@@ -265,17 +265,28 @@ export class GraphStore {
 		}
 		this.disconnect();
 		this.connectionStatus = 'connecting';
-		this.#unsubscribe = this.#client.subscribeEvents(this.project.id, {
-			onOpen: () => {
-				this.connectionStatus = 'open';
+		// On manual (re)connect, hand the daemon the last event id we
+		// already saw so it can replay anything that landed during the
+		// gap. Browsers handle this automatically for auto-reconnect via
+		// `Last-Event-ID`, but a deliberate `disconnect() + connect()`
+		// (or an explicit Refresh-driven cycle) starts a fresh
+		// EventSource that has no auto-resume cursor.
+		const lastEvent = this.events.length > 0 ? this.events[this.events.length - 1] : null;
+		this.#unsubscribe = this.#client.subscribeEvents(
+			this.project.id,
+			{
+				onOpen: () => {
+					this.connectionStatus = 'open';
+				},
+				onError: () => {
+					this.connectionStatus = 'error';
+				},
+				onEvent: (event) => {
+					this.#handleEvent(event);
+				}
 			},
-			onError: () => {
-				this.connectionStatus = 'error';
-			},
-			onEvent: (event) => {
-				this.#handleEvent(event);
-			}
-		});
+			lastEvent ? { afterEventId: lastEvent.id } : {}
+		);
 	}
 
 	disconnect(): void {

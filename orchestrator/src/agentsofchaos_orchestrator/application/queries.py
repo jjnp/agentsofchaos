@@ -81,6 +81,23 @@ class QueryService:
                 raise ProjectNotFoundError(f"Unknown project: {project_id}")
             return await unit_of_work.events.list_by_project(project_id)
 
+    async def list_events_since(
+        self,
+        project_id: UUID,
+        *,
+        after_event_id: UUID,
+    ) -> tuple[EventRecord, ...] | None:
+        """Events that landed after the given event id. Returns `None`
+        when the anchor isn't found — caller falls back to full replay.
+        """
+        async with self._unit_of_work() as unit_of_work:
+            project = await unit_of_work.projects.get(project_id)
+            if project is None:
+                raise ProjectNotFoundError(f"Unknown project: {project_id}")
+            return await unit_of_work.events.list_by_project_after(
+                project_id, after_event_id
+            )
+
     async def list_artifacts(
         self,
         project_id: UUID,

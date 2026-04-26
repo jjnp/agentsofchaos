@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from collections.abc import Mapping
 from contextlib import suppress
@@ -151,6 +152,7 @@ class PiRuntimeAdapter:
                     client=client,
                     source_session_path=source_session_path,
                     source_node_id=request.source_node.id,
+                    new_worktree=request.worktree_path,
                 )
 
             await client.expect_success(
@@ -323,18 +325,41 @@ class PiRuntimeAdapter:
         client: PiRpcClient,
         source_session_path: Path,
         source_node_id: UUID,
+        new_worktree: Path,
     ) -> bool:
-        """Attempt to fork the parent's pi session into the new run.
+        """Fork the parent's pi session into the new run.
 
-        Returns True if the clone succeeded, False if pi rejected the
-        switch because the parent's recorded working directory has been
-        cleaned up. Each prompt run gets a fresh worktree and the parent
-        worktree is removed at end-of-run, so pi's stored session cwd
-        often points at a path that no longer exists. When that happens
-        we fall back to a fresh session — losing pi's memory of the
-        parent run's tool history, but keeping the run alive — rather
-        than crashing the whole run with RuntimeExecutionError.
+        Each prompt run executes in a fresh worktree; the parent
+        worktree is cleaned up at end-of-run. Pi's `switch_session`
+        sanity-checks the cwd recorded in the session JSONL and
+        refuses if that path no longer exists. We rewrite the session
+        file's stored cwd to point at the *current* run's worktree
+        before calling switch_session — pi sees a valid cwd, the
+        switch succeeds, and clone proceeds normally so the new run
+        inherits the parent's tool history.
+
+        The fallback (catching the cwd-rejection error) stays as a
+        defensive layer for unexpected rejections, but in the common
+        path the rewrite makes it unreachable.
         """
+        rewritten = _rewrite_session_cwd(source_session_path, new_worktree)
+        if rewritten is not None:
+            await client.emit(
+                RuntimeEvent(
+                    kind="runtime.session_cwd_rewritten",
+                    message=(
+                        "Source pi session cwd rewrote to current worktree so "
+                        "switch_session sees a valid path."
+                    ),
+                    payload={
+                        "source_node_id": str(source_node_id),
+                        "source_session_file": str(source_session_path),
+                        "previous_cwd": rewritten,
+                        "new_cwd": str(new_worktree),
+                    },
+                )
+            )
+
         try:
             _expect_not_cancelled(
                 await client.expect_success(
@@ -346,6 +371,8 @@ class PiRuntimeAdapter:
         except RuntimeExecutionError as exc:
             if "working directory does not exist" not in str(exc):
                 raise
+            # Defensive: rewrite should make this unreachable, but keep
+            # the fallback so unexpected pi behaviour doesn't kill runs.
             await client.emit(
                 RuntimeEvent(
                     kind="runtime.session_clone_skipped",
@@ -379,6 +406,44 @@ class PiRuntimeAdapter:
             )
         )
         return True
+
+
+def _rewrite_session_cwd(session_path: Path, new_cwd: Path) -> str | None:
+    """Rewrite the `cwd` field on a pi session JSONL's first line if
+    its current value doesn't exist on disk.
+
+    Pi's session JSONL has a `{"type":"session", "cwd": "...", ...}` as
+    line 0. Pi appends events; it never rewrites that header during a
+    session, so editing it from the outside is safe between runs. We
+    return the previous value as a string (for telemetry) when we
+    rewrote, or `None` when no rewrite was needed (cwd already valid,
+    file missing, or unparseable header).
+    """
+    try:
+        with session_path.open("r", encoding="utf-8") as handle:
+            lines = handle.readlines()
+    except OSError:
+        return None
+    if not lines:
+        return None
+    try:
+        header = json.loads(lines[0])
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(header, dict) or header.get("type") != "session":
+        return None
+    stored_cwd = header.get("cwd")
+    if not isinstance(stored_cwd, str):
+        return None
+    if Path(stored_cwd).is_dir():
+        return None
+    header["cwd"] = str(new_cwd)
+    lines[0] = json.dumps(header) + "\n"
+    try:
+        session_path.write_text("".join(lines), encoding="utf-8")
+    except OSError:
+        return None
+    return stored_cwd
 
 
 async def _wait_for_completion_or_cancel(

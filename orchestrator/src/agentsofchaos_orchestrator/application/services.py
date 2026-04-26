@@ -230,6 +230,16 @@ class OrchestratorService:
     async def list_events(self, project_id: UUID) -> tuple[EventRecord, ...]:
         return await self._queries.list_events(project_id)
 
+    async def list_events_since(
+        self,
+        project_id: UUID,
+        *,
+        after_event_id: UUID,
+    ) -> tuple[EventRecord, ...] | None:
+        return await self._queries.list_events_since(
+            project_id, after_event_id=after_event_id
+        )
+
     async def list_artifacts(
         self,
         project_id: UUID,

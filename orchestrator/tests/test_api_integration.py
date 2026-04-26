@@ -767,3 +767,5 @@ def test_merge_same_node_is_422(client: TestClient, repo: Path) -> None:
     )
     assert r.status_code == 422
     assert r.json()["error"]["code"] == "MERGE_INVALID_NODES"
+
+

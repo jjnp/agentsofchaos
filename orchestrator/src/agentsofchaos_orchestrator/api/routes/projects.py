@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import FileResponse, StreamingResponse
 
 from agentsofchaos_orchestrator.api.dependencies import (
@@ -357,18 +357,65 @@ async def stream_project_events(
     service: ServiceDependency,
     event_bus: EventBusDependency,
     settings: SettingsDependency,
+    last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
+    after_id: Annotated[UUID | None, Query()] = None,
 ) -> StreamingResponse:
-    historical_events = await service.list_events(project_id)
+    """SSE event stream with replay-on-reconnect.
+
+    Each frame carries an `id:` line so the browser's EventSource
+    automatically resends `Last-Event-ID` when it reconnects. Replay
+    cursor sources, in priority order:
+      1. `Last-Event-ID` request header (browser auto-reconnect path)
+      2. `?after_id=<uuid>` query param (manual / cross-session
+         resume — the header is hard to set on EventSource)
+      3. neither — fall back to full historical replay (initial connect)
+
+    Race-free wiring: we subscribe to the event bus *before* querying
+    historical, so any event written between the cursor and the
+    subscription is captured by the queue. We then de-dupe live events
+    against the historical batch by id, so callers see each event
+    exactly once even on the boundary tick.
+    """
+    cursor: UUID | None = None
+    if last_event_id:
+        try:
+            cursor = UUID(last_event_id.strip())
+        except ValueError:
+            cursor = None
+    if cursor is None and after_id is not None:
+        cursor = after_id
 
     async def event_generator() -> AsyncIterator[str]:
-        for event in historical_events:
-            payload = EventResponse.from_domain(event).model_dump_json()
-            yield f"event: {event.topic.value}\ndata: {payload}\n\n"
-
         async with event_bus.subscribe(project_id) as queue:
+            replayed_ids: set[UUID] = set()
+            historical: tuple[EventResponse, ...]
+            if cursor is not None:
+                since = await service.list_events_since(
+                    project_id, after_event_id=cursor
+                )
+                if since is None:
+                    # Anchor missing — honour the SSE contract by
+                    # falling back to a full replay rather than silently
+                    # dropping the gap.
+                    historical = tuple(
+                        EventResponse.from_domain(e)
+                        for e in await service.list_events(project_id)
+                    )
+                else:
+                    historical = tuple(EventResponse.from_domain(e) for e in since)
+            else:
+                historical = tuple(
+                    EventResponse.from_domain(e)
+                    for e in await service.list_events(project_id)
+                )
+
+            for event in historical:
+                replayed_ids.add(event.id)
+                yield _format_sse_frame(event)
+
             while True:
                 try:
-                    event = await asyncio.wait_for(
+                    live_event = await asyncio.wait_for(
                         queue.get(),
                         timeout=settings.event_stream_keepalive_seconds,
                     )
@@ -376,13 +423,27 @@ async def stream_project_events(
                     yield ": keepalive\n\n"
                     continue
 
-                payload = EventResponse.from_domain(event).model_dump_json()
-                yield f"event: {event.topic.value}\ndata: {payload}\n\n"
+                live_response = EventResponse.from_domain(live_event)
+                if live_response.id in replayed_ids:
+                    # Already streamed in the historical batch — the
+                    # subscribe-before-query window picked it up twice.
+                    continue
+                replayed_ids.add(live_response.id)
+                yield _format_sse_frame(live_response)
 
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
+
+
+def _format_sse_frame(event: EventResponse) -> str:
+    """SSE frame with `id:` line so EventSource tracks Last-Event-ID."""
+    return (
+        f"id: {event.id}\n"
+        f"event: {event.topic.value}\n"
+        f"data: {event.model_dump_json()}\n\n"
     )
 
 
