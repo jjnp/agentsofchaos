@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { GraphStore } from '$lib/agent-graph/state.svelte';
-	import type { Node, NodeDiff } from '$lib/orchestrator/contracts';
+	import type { ContextSnapshot, Node, NodeDiff } from '$lib/orchestrator/contracts';
 
 	import DiffFileList from './DiffFileList.svelte';
 	import DiffFileView from './DiffFileView.svelte';
@@ -18,6 +18,9 @@
 	let selectedPath = $state<string | null>(null);
 
 	const diff = $derived<NodeDiff | null>(store.diffsByNodeId.get(node.id) ?? null);
+	const contextSnapshot = $derived<ContextSnapshot | null>(
+		store.contextSnapshotsById.get(node.context_snapshot_id) ?? null
+	);
 	const selectedFile = $derived(
 		diff?.files.find((file) => file.path === selectedPath) ?? null
 	);
@@ -36,6 +39,18 @@
 			.finally(() => {
 				loading = false;
 			});
+	});
+
+	// Pull the context snapshot too — its `summary` field gives the
+	// `DiffSummaryCard` a body that's actually informational ("Done —
+	// created tictactoe.js…") instead of a duplicate of the +/- chip
+	// row directly below.
+	$effect(() => {
+		const id = node.context_snapshot_id;
+		if (store.contextSnapshotsById.has(id)) return;
+		void store.fetchContextSnapshot(id).catch(() => {
+			// Surfaced via store.lastError elsewhere if it actually matters.
+		});
 	});
 
 	$effect(() => {
@@ -63,6 +78,19 @@
 			: null
 	);
 	const cardBody = $derived(() => {
+		// Priority order:
+		//   1. First non-heading line of the run's summary — gives the
+		//      card a real "what did this run do" sentence.
+		//   2. Node title — for nodes without a meaningful summary.
+		//   3. The file-stat sentence — last-resort fallback that
+		//      duplicates the chips below but at least says something.
+		const summary = contextSnapshot?.summary ?? '';
+		const firstLine = summary
+			.split('\n')
+			.map((line) => line.trim())
+			.find((line) => line.length > 0 && !line.startsWith('#'));
+		if (firstLine) return firstLine;
+		if (node.title) return node.title;
 		if (!diff) return 'Diff not loaded.';
 		const { files, additions, deletions } = diff.totals;
 		if (files === 0) return 'No changes between this node and its parent.';
