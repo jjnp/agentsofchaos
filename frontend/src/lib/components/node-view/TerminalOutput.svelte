@@ -56,6 +56,21 @@
 			) {
 				continue;
 			}
+			// Pi streams text/thinking/tool-call output as per-token
+			// deltas (`runtime.message_delta`) and partial tool results
+			// (`runtime.tool_execution_update`). Both are non-durable
+			// transient signals — the full assistant text lands in
+			// `runtime.message_end` (already rendered above) and the
+			// tool result lands in `runtime.tool_execution_end`.
+			// Rendering each delta as its own line turns the panel
+			// into a wall of single-character "lines" — readable by no
+			// one. Drop them here.
+			if (
+				kind === 'runtime.message_delta' ||
+				kind === 'runtime.tool_execution_update'
+			) {
+				continue;
+			}
 			if (lifecycleMessage) {
 				out.push({ id: event.id, tone: 'info', text: `· ${lifecycleMessage}` });
 			}
