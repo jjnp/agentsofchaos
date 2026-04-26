@@ -10,11 +10,11 @@ from agentsofchaos_orchestrator.domain.errors import (
 )
 from agentsofchaos_orchestrator.infrastructure.sandbox.base import (
     SandboxBackend,
-    SandboxKind,
-    SandboxNetworkPolicy,
     SandboxedExecutionRequest,
     SandboxedExecutionSpec,
     SandboxedProcess,
+    SandboxKind,
+    SandboxNetworkPolicy,
 )
 
 

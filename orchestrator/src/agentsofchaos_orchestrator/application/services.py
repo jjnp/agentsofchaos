@@ -23,6 +23,7 @@ from agentsofchaos_orchestrator.application.project_nodes import ProjectNodeServ
 from agentsofchaos_orchestrator.application.queries import QueryService
 from agentsofchaos_orchestrator.application.recovery import StartupRecoveryService
 from agentsofchaos_orchestrator.application.runs import RunApplicationService
+from agentsofchaos_orchestrator.domain.enums import SandboxKind
 from agentsofchaos_orchestrator.domain.models import (
     Artifact,
     CodeSnapshot,
@@ -33,7 +34,6 @@ from agentsofchaos_orchestrator.domain.models import (
     Project,
     Run,
 )
-from agentsofchaos_orchestrator.domain.enums import SandboxKind
 from agentsofchaos_orchestrator.infrastructure.event_bus import InMemoryEventBus
 from agentsofchaos_orchestrator.infrastructure.git_service import GitService
 from agentsofchaos_orchestrator.infrastructure.runtime import NoOpRuntimeAdapter, RuntimeAdapter

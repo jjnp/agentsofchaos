@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import suppress
 from dataclasses import dataclass
 
 from agentsofchaos_orchestrator.application.eventing import ApplicationEventRecorder
@@ -54,10 +55,8 @@ class OutboxDispatchWorker:
                 raise
             except Exception:
                 logger.exception("Outbox dispatcher iteration failed")
-            try:
+            with suppress(TimeoutError):
                 await asyncio.wait_for(
                     self._stop_requested.wait(),
                     timeout=self._config.poll_interval_seconds,
                 )
-            except asyncio.TimeoutError:
-                pass

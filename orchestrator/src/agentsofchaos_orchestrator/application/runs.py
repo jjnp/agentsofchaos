@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from uuid import UUID
 
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agentsofchaos_orchestrator.application.artifacts import ArtifactRecorder
@@ -32,7 +33,13 @@ from agentsofchaos_orchestrator.domain.errors import (
     ProjectNotFoundError,
     RuntimeCancelledError,
 )
+from agentsofchaos_orchestrator.domain.merge import (
+    MergeReport,
+    ResolutionContextDecisionReport,
+    ResolutionReport,
+)
 from agentsofchaos_orchestrator.domain.models import (
+    Artifact,
     CodeSnapshot,
     ContextSnapshot,
     Node,
@@ -42,7 +49,11 @@ from agentsofchaos_orchestrator.domain.models import (
 from agentsofchaos_orchestrator.infrastructure.git_service import GitService
 from agentsofchaos_orchestrator.infrastructure.runtime import (
     ContextItemEdit as RuntimeContextItemEdit,
+)
+from agentsofchaos_orchestrator.infrastructure.runtime import (
     ContextResolutionDecision as RuntimeContextResolutionDecision,
+)
+from agentsofchaos_orchestrator.infrastructure.runtime import (
     RuntimeAdapter,
     RuntimeCancellationToken,
     RuntimeExecutionRequest,
@@ -70,6 +81,7 @@ class PreparedPromptRun:
     child_parent_node_ids: tuple[UUID, ...] = ()
     original_user_prompt: str | None = None
     resolution_report_path: Path | None = None
+    source_merge_report_artifact_id: UUID | None = None
 
 
 class RunApplicationService:
@@ -239,13 +251,23 @@ class RunApplicationService:
         report_path = self._merge_report_path(project_root, merge_node_id)
         if not report_path.is_file():
             raise MergeAncestorError(f"Merge report is missing for node {merge_node_id}")
-        loaded_report = json.loads(report_path.read_text(encoding="utf-8"))
-        if not isinstance(loaded_report, dict):
-            raise MergeAncestorError(f"Merge report is invalid for node {merge_node_id}")
+        try:
+            merge_report = MergeReport.model_validate_json(
+                report_path.read_text(encoding="utf-8"),
+            )
+        except (OSError, ValidationError) as error:
+            raise MergeAncestorError(
+                f"Merge report is invalid for node {merge_node_id}"
+            ) from error
+        source_merge_report_artifact_id = await self._find_merge_report_artifact_id(
+            project_id=project.id,
+            merge_node_id=merge_node_id,
+            report_path=report_path,
+        )
         resolution_prompt = _resolution_prompt(
             user_prompt=user_prompt,
             merge_node=source_node,
-            merge_report=loaded_report,
+            merge_report=merge_report,
         )
 
         run_id = self._new_uuid()
@@ -287,7 +309,25 @@ class RunApplicationService:
             child_parent_node_ids=(source_node.id,),
             original_user_prompt=user_prompt,
             resolution_report_path=report_path,
+            source_merge_report_artifact_id=source_merge_report_artifact_id,
         )
+
+    async def _find_merge_report_artifact_id(
+        self,
+        *,
+        project_id: UUID,
+        merge_node_id: UUID,
+        report_path: Path,
+    ) -> UUID | None:
+        async with self._unit_of_work() as unit_of_work:
+            artifacts = await unit_of_work.artifacts.list_by_project(
+                project_id,
+                node_id=merge_node_id,
+            )
+        for artifact in artifacts:
+            if artifact.kind is ArtifactKind.MERGE_REPORT and artifact.path == str(report_path):
+                return artifact.id
+        return None
 
     async def _execute_prepared_prompt_run(
         self,
@@ -423,6 +463,14 @@ class RunApplicationService:
             child_code_snapshot.id,
             git_ref=ref_name,
         )
+        runtime_artifacts = await self._artifact_recorder.record_run_artifacts(
+            project_id=prepared_run.run.project_id,
+            run_id=prepared_run.run.id,
+            node_id=child_node.id,
+            transcript_path=prepared_run.transcript_path,
+            runtime_metadata=runtime_result.metadata,
+            created_at=child_timestamp,
+        )
         if prepared_run.child_kind is NodeKind.RESOLUTION:
             await self._record_resolution_report(
                 prepared_run=prepared_run,
@@ -431,6 +479,7 @@ class RunApplicationService:
                 git_ref=ref_name,
                 changed_files=changed_files,
                 runtime_metadata=runtime_result.metadata,
+                runtime_artifacts=runtime_artifacts,
                 context_resolutions=context_resolutions,
                 created_at=child_timestamp,
             )
@@ -444,6 +493,7 @@ class RunApplicationService:
             child_created_at=child_timestamp,
             transcript_path=prepared_run.transcript_path,
             runtime_metadata=runtime_result.metadata,
+            runtime_artifacts=runtime_artifacts,
         )
         return succeeded_run, child_node
 
@@ -474,6 +524,7 @@ class RunApplicationService:
         git_ref: str,
         changed_files: tuple[str, ...],
         runtime_metadata: dict[str, object],
+        runtime_artifacts: tuple[Artifact, ...],
         context_resolutions: tuple[ContextResolutionRecord, ...],
         created_at: datetime,
     ) -> None:
@@ -482,34 +533,58 @@ class RunApplicationService:
             child_node.id,
         )
         report_path.parent.mkdir(parents=True, exist_ok=True)
-        report = {
-            "conflicted_merge_node_id": str(prepared_run.source_node.id),
-            "successor_node_id": str(child_node.id),
-            "resolution_run_id": str(prepared_run.run.id),
-            "resolution_prompt": prepared_run.original_user_prompt or "",
-            "runtime_kind": prepared_run.runtime_kind.value,
-            "source_merge_report_path": (
+        runtime_transcript_artifact = next(
+            (
+                artifact
+                for artifact in runtime_artifacts
+                if artifact.kind is ArtifactKind.RUNTIME_TRANSCRIPT
+            ),
+            None,
+        )
+        runtime_session_artifact_ids = tuple(
+            artifact.id
+            for artifact in runtime_artifacts
+            if artifact.kind is ArtifactKind.RUNTIME_SESSION
+        )
+        report = ResolutionReport(
+            conflicted_merge_node_id=prepared_run.source_node.id,
+            successor_node_id=child_node.id,
+            resolution_run_id=prepared_run.run.id,
+            resolution_prompt=prepared_run.original_user_prompt or "",
+            runtime_kind=prepared_run.runtime_kind,
+            source_merge_report_path=(
                 str(prepared_run.resolution_report_path)
                 if prepared_run.resolution_report_path is not None
                 else None
             ),
-            "commit_sha": committed_sha,
-            "git_ref": git_ref,
-            "changed_files": list(changed_files),
-            "validated": True,
-            "runtime_metadata": runtime_metadata,
-            "context_resolutions": [
-                {
-                    "section": decision.section.value,
-                    "item_id": str(decision.item_id),
-                    "chosen": decision.chosen.value,
-                    "text": decision.text,
-                    "rationale": decision.rationale,
-                }
+            source_merge_report_artifact_id=prepared_run.source_merge_report_artifact_id,
+            runtime_transcript_artifact_id=(
+                runtime_transcript_artifact.id
+                if runtime_transcript_artifact is not None
+                else None
+            ),
+            runtime_session_artifact_ids=runtime_session_artifact_ids,
+            runtime_artifact_ids=tuple(artifact.id for artifact in runtime_artifacts),
+            commit_sha=committed_sha,
+            git_ref=git_ref,
+            changed_files=changed_files,
+            validated=True,
+            runtime_metadata=runtime_metadata,
+            context_resolutions=tuple(
+                ResolutionContextDecisionReport(
+                    section=decision.section,
+                    item_id=decision.item_id,
+                    chosen=decision.chosen,
+                    text=decision.text,
+                    rationale=decision.rationale,
+                )
                 for decision in context_resolutions
-            ],
-        }
-        report_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+            ),
+        )
+        report_path.write_text(
+            json.dumps(report.model_dump(mode="json"), indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
         await self._artifact_recorder.record_artifact(
             project_id=prepared_run.project.id,
             kind=ArtifactKind.RESOLUTION_REPORT,
@@ -680,9 +755,13 @@ def _resolution_prompt(
     *,
     user_prompt: str,
     merge_node: Node,
-    merge_report: dict[str, object],
+    merge_report: MergeReport,
 ) -> str:
-    report_text = json.dumps(merge_report, indent=2, sort_keys=True)
+    report_text = json.dumps(
+        merge_report.model_dump(mode="json"),
+        indent=2,
+        sort_keys=True,
+    )
     return "\n\n".join(
         (
             "You are resolving an Agents of Chaos conflicted merge node.",

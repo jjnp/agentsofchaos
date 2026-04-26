@@ -11,7 +11,9 @@
  * the bottom of the canvas.
  *
  * Flow:
- *   1. Open project, create root from HEAD
+ *   1. Open project — the orchestrator now auto-creates the root from
+ *      HEAD as part of `POST /projects/open`, so the spec just waits
+ *      for the root to render and clicks it to open the prompt popover
  *   2. Prompt the root → "tic tac toe in JS for the CLI" (creates seed)
  *   3. From seed, prompt: "add a 3-player mode" (branchA)
  *   4. From seed, prompt: "add a random move AI opponent" (branchB)
@@ -72,10 +74,15 @@ test('graph-native demo: tic tac toe → 3-player → AI opponent → merge', as
 	await expect(page.locator('.agent-canvas')).toBeVisible({ timeout: 15_000 });
 	await beat(800);
 
-	// 2) Create the root from HEAD
-	await page.getByRole('button', { name: /^New root$/ }).click();
-	await expect(page.locator('.agent-node').first()).toBeVisible();
-	await beat(900);
+	// 2) The root is now auto-created on `POST /projects/open`, so we
+	//    just wait for it to render and click it to open the prompt
+	//    popover. The "New root" button only appears in the (now rare)
+	//    case where opening the project produced no root.
+	const rootNode = page.locator('.agent-node').first();
+	await expect(rootNode).toBeVisible({ timeout: 15_000 });
+	await beat(700);
+	await page.locator('[data-agent-node-id]').first().dispatchEvent('click');
+	await beat(500);
 
 	// 3) Prompt the root → write the game. Prompts are written so the
 	//    first ~32 chars (which become the node title via

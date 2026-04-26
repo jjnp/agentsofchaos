@@ -35,15 +35,18 @@ This folder started docs-first and now contains the **initial implementation fou
 - typed domain models
 - git repository validation
 - project registration
-- root node creation from `HEAD`
+- automatic root node creation from `HEAD` on project open
 - detached worktree lifecycle and merge-base utilities
 - supervised background prompt-run execution with cancellation
 - pluggable runtime adapters, with pi as the first rich adapter
 - durable event records, outbox dispatch, and SSE event streaming
 - first ancestor-based merge subsystem for code and context
-- initial tests for project opening, root node creation, git worktrees, prompt runs, and merges
+- conflicted merge report artifacts
+- agent-driven resolution runs that create immutable successor nodes
+- typed merge and resolution report models with artifact-level provenance links
+- tests for project opening, root node creation, git worktrees, prompt runs, merges, and resolution flows
 
-The implementation is intentionally moving phase by phase. The foundation is in place; merge handling now exists as a first cut and still needs richer conflict UX, deeper context semantics, and frontend wiring.
+The implementation is intentionally moving phase by phase. The foundation is in place; merge and resolution handling now exist as a first cut and still need richer conflict UX, deeper context semantics, and frontend wiring.
 
 ## Read these first
 
@@ -90,7 +93,7 @@ orchestrator/
 
 The first implementation target is a high-quality local daemon that can:
 
-- open a repository and create a root node from `HEAD`
+- open a repository and automatically create a root node from `HEAD`
 - run an agent prompt from a node into a fresh child node
 - persist code snapshots and context snapshots as first-class state
 - stream run events live to the browser

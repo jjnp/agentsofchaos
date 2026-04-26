@@ -40,8 +40,8 @@ If implementation pressure conflicts with these invariants, change the implement
 
 The orchestrator currently has working alpha implementations for:
 
-- project open
-- root node creation
+- project open with automatic root node creation
+- idempotent explicit root-node endpoint for legacy/manual callers
 - graph query
 - node query
 - code snapshot query
@@ -63,6 +63,10 @@ The orchestrator currently has working alpha implementations for:
 - merge report artifact creation
 - merge report retrieval
 - deterministic ancestor-based context merge first cut
+- agent-driven merge resolution runs
+- immutable resolution successor nodes
+- typed merge and resolution report models
+- resolution report artifacts with merge-report, runtime-artifact, and context-decision provenance
 
 The backend can support a golden-path demo, but it is **not done**. Treat it as an alpha foundation.
 
@@ -90,53 +94,31 @@ Recommended validation commands from repo root:
 ```bash
 cd orchestrator
 uv sync --extra dev
-PYTHONPATH=. uv run pytest -q
+uv run pytest -q
+uv run ruff check src tests
+MYPYPATH=src:. uv run mypy --explicit-package-bases src tests
 uv run python -m compileall src tests
 ```
 
 At the time of this note:
 
 ```text
-PYTHONPATH=. uv run pytest -q
+uv run pytest -q
 ```
 
 passes:
 
 ```text
-31 passed
+55 passed
 ```
 
-Plain `uv run pytest` fails because tests import `tests.helpers` and `tests/` is not currently a package. Either add `tests/__init__.py`, adjust imports, or keep `PYTHONPATH=.` until this is fixed.
-
-Ruff and mypy are **not clean** yet.
-
-Known ruff categories:
-
-- import ordering
-- FastAPI `Depends(...)` flagged by B008
-- `datetime.UTC` modernization
-- `repositories.py` import placement
-- `event_bus.py` return inside `finally`
-- async pathlib warnings
-
-Useful mypy invocation that avoids package-resolution noise:
+`tests/` is now a package, so plain `uv run pytest` works without `PYTHONPATH=.`.
+Ruff and mypy are clean for the active backend tree:
 
 ```bash
+uv run ruff check src tests
 MYPYPATH=src:. uv run mypy --explicit-package-bases src tests
 ```
-
-This currently reduces to a small set of substantive typing issues, including:
-
-- `GitService` generic error-type defaults
-- `ArtifactRecorder._persist_artifacts` run id optionality mismatch
-- `RunSupervisor` accepting `Awaitable` where `asyncio.create_task` wants a coroutine
-- pi process protocol mismatch with `asyncio.subprocess.Process`
-- fake pi process factory test type mismatch
-- payload invariance in event recording helpers
-- missing local annotations in run-state artifact handling
-- repository/UoW helper calls returning `Any` in merge snapshot lookups
-
-Do not interpret mypy's larger default output as purely application problems; some is invocation/package-path configuration.
 
 ## Important repository status note
 
@@ -160,17 +142,23 @@ The orchestrator is not complete until these are addressed.
 
 ### 1. Merge conflict resolution
 
-Merges can produce conflicted merge nodes, but there is no backend workflow to resolve them.
+Merges can produce conflicted merge nodes, and the backend now has an agent-driven successor-node resolution workflow.
 
-Needed:
+Implemented:
 
-- typed conflict models
+- typed conflict and report models for merge/resolution artifacts
 - agent-driven resolution prompt-run API
 - runtime prompt/context injection for merge conflict evidence
 - code validation/finalization after the agent edits the worktree
-- context-resolution projection from agent evidence
+- initial context-resolution projection from runtime decisions
 - provenance for resolution decisions
-- successor-node creation
+- immutable successor-node creation
+- API coverage for success, non-merge rejection, non-conflicted merge rejection, missing/invalid merge reports, residual conflict markers, unmerged index entries, and runtime failures
+
+Still needed:
+
+- deeper semantic context-resolution projection from runtime evidence
+- unambiguous UI affordances for browsing linked resolution evidence
 
 ### 2. Conflicted code snapshot semantics
 

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
+from typing import Any
 from uuid import UUID
 
 from agentsofchaos_orchestrator.domain.errors import RuntimeCancelledError
@@ -29,13 +30,13 @@ class RunSupervisor:
         *,
         run_id: UUID,
         cancellation_token: RuntimeCancellationToken,
-        awaitable_factory: Callable[[], Awaitable[object]],
+        awaitable_factory: Callable[[], Coroutine[Any, Any, object]],
     ) -> None:
         async with self._lock:
             existing = self._active_runs.get(run_id)
             if existing is not None and not existing.task.done():
                 raise RuntimeError(f"Run is already active: {run_id}")
-            task = asyncio.create_task(awaitable_factory())
+            task: asyncio.Task[object] = asyncio.create_task(awaitable_factory())
             active_run = ActiveRun(
                 run_id=run_id,
                 cancellation_token=cancellation_token,

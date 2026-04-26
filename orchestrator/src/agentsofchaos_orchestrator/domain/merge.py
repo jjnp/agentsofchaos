@@ -7,8 +7,11 @@ from pydantic import Field
 from agentsofchaos_orchestrator.domain.enums import (
     CodeMergeSnapshotRole,
     ContextMergeSnapshotRole,
+    ContextResolutionChoice,
+    ContextSection,
     MergeResolutionPolicy,
     NodeStatus,
+    RuntimeKind,
 )
 from agentsofchaos_orchestrator.domain.models import ContextConflict, DomainModel
 
@@ -73,3 +76,30 @@ class MergeReport(DomainModel):
     snapshot_semantics: MergeSnapshotSemantics
     code_merge: CodeMergeReport
     context_merge: ContextMergeReport
+
+
+class ResolutionContextDecisionReport(DomainModel):
+    section: ContextSection
+    item_id: UUID
+    chosen: ContextResolutionChoice
+    text: str = Field(min_length=1)
+    rationale: str = ""
+
+
+class ResolutionReport(DomainModel):
+    conflicted_merge_node_id: UUID
+    successor_node_id: UUID
+    resolution_run_id: UUID
+    resolution_prompt: str
+    runtime_kind: RuntimeKind
+    source_merge_report_path: str | None = None
+    source_merge_report_artifact_id: UUID | None = None
+    runtime_transcript_artifact_id: UUID | None = None
+    runtime_session_artifact_ids: tuple[UUID, ...] = ()
+    runtime_artifact_ids: tuple[UUID, ...] = ()
+    commit_sha: str = Field(min_length=40, max_length=40)
+    git_ref: str = Field(min_length=1)
+    changed_files: tuple[str, ...] = ()
+    validated: bool = True
+    runtime_metadata: dict[str, object] = Field(default_factory=dict)
+    context_resolutions: tuple[ResolutionContextDecisionReport, ...] = ()

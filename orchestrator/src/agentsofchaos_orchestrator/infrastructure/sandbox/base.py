@@ -20,7 +20,17 @@ if TYPE_CHECKING:
     )
 
 
-__all_kinds__ = (SandboxKind,)
+__all__ = (
+    "AsyncStdin",
+    "SandboxBackend",
+    "SandboxKind",
+    "SandboxModel",
+    "SandboxNetworkPolicy",
+    "SandboxSpawn",
+    "SandboxedExecutionRequest",
+    "SandboxedExecutionSpec",
+    "SandboxedProcess",
+)
 
 
 class SandboxNetworkPolicy(StrEnum):
@@ -59,7 +69,7 @@ class SandboxedExecutionRequest:
     """
 
     spec: SandboxedExecutionSpec
-    cancellation_token: "RuntimeCancellationToken | None" = None
+    cancellation_token: RuntimeCancellationToken | None = None
     stdin: bytes | None = None
 
 
@@ -93,6 +103,8 @@ class SandboxedProcess(Protocol):
     def kill(self) -> None: ...
 
     async def wait(self) -> int: ...
+
+    async def communicate(self) -> tuple[bytes, bytes]: ...
 
 
 SandboxSpawn = Callable[[SandboxedExecutionRequest], Awaitable[SandboxedProcess]]

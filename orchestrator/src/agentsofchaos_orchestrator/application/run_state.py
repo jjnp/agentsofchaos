@@ -17,6 +17,7 @@ from agentsofchaos_orchestrator.domain.enums import (
     SandboxKind,
 )
 from agentsofchaos_orchestrator.domain.models import (
+    Artifact,
     CodeSnapshot,
     ContextSnapshot,
     Node,
@@ -110,15 +111,20 @@ class RunStateService:
         child_created_at: datetime,
         transcript_path: Path,
         runtime_metadata: dict[str, object],
+        runtime_artifacts: tuple[Artifact, ...] | None = None,
     ) -> Run:
-        succeeded_run = self._lifecycle.succeed(
-            running_run,
-            transcript_path=str(transcript_path),
-            finished_at=self._now(),
-        )
-        succeeded_run = await self.persist_run(succeeded_run)
+        artifacts = runtime_artifacts
+        if artifacts is None:
+            artifacts = await self._artifact_recorder.record_run_artifacts(
+                project_id=running_run.project_id,
+                run_id=running_run.id,
+                node_id=child_node.id,
+                transcript_path=transcript_path,
+                runtime_metadata=runtime_metadata,
+                created_at=child_created_at,
+            )
         await self._record_child_node_created(
-            succeeded_run=succeeded_run,
+            run=running_run,
             child_node=child_node,
             child_code_snapshot=child_code_snapshot,
             child_context_snapshot=child_context_snapshot,
@@ -126,14 +132,12 @@ class RunStateService:
             git_ref=git_ref,
             child_created_at=child_created_at,
         )
-        artifacts = await self._artifact_recorder.record_run_artifacts(
-            project_id=succeeded_run.project_id,
-            run_id=succeeded_run.id,
-            node_id=child_node.id,
-            transcript_path=transcript_path,
-            runtime_metadata=runtime_metadata,
-            created_at=succeeded_run.finished_at or child_created_at,
+        succeeded_run = self._lifecycle.succeed(
+            running_run,
+            transcript_path=str(transcript_path),
+            finished_at=self._now(),
         )
+        succeeded_run = await self.persist_run(succeeded_run)
         await self._events.record_and_publish(
             project_id=succeeded_run.project_id,
             topic=EventTopic.RUN_SUCCEEDED,
@@ -162,7 +166,7 @@ class RunStateService:
             finished_at=self._now(),
         )
         cancelled_run = await self.persist_run(cancelled_run)
-        artifacts = ()
+        artifacts: tuple[Artifact, ...] = ()
         if transcript_path is not None:
             artifacts = await self._artifact_recorder.record_run_artifacts(
                 project_id=cancelled_run.project_id,
@@ -218,7 +222,7 @@ class RunStateService:
     async def _record_child_node_created(
         self,
         *,
-        succeeded_run: Run,
+        run: Run,
         child_node: Node,
         child_code_snapshot: CodeSnapshot,
         child_context_snapshot: ContextSnapshot,
@@ -227,15 +231,15 @@ class RunStateService:
         child_created_at: datetime,
     ) -> None:
         await self._events.record_and_publish(
-            project_id=succeeded_run.project_id,
+            project_id=run.project_id,
             topic=(
                 EventTopic.RESOLUTION_NODE_CREATED
                 if child_node.kind is NodeKind.RESOLUTION
                 else EventTopic.PROMPT_NODE_CREATED
             ),
             payload={
-                "project_id": str(succeeded_run.project_id),
-                "run_id": str(succeeded_run.id),
+                "project_id": str(run.project_id),
+                "run_id": str(run.id),
                 "node_id": str(child_node.id),
                 "parent_node_ids": [str(parent_id) for parent_id in child_node.parent_node_ids],
                 "code_snapshot_id": str(child_code_snapshot.id),

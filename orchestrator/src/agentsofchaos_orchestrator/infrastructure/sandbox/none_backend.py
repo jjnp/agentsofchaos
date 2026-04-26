@@ -4,9 +4,9 @@ import asyncio
 
 from agentsofchaos_orchestrator.infrastructure.sandbox.base import (
     SandboxBackend,
-    SandboxKind,
     SandboxedExecutionRequest,
     SandboxedProcess,
+    SandboxKind,
 )
 
 

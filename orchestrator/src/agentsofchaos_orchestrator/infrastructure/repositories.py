@@ -1,23 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
-
-
-def _utc(value: datetime) -> datetime:
-    """Re-attach UTC tzinfo when SQLite drops it on read.
-
-    All datetime columns are declared `DateTime(timezone=True)` and writes use
-    `datetime.now(timezone.utc)`, but SQLite's TEXT-based storage discards tz so
-    SQLAlchemy returns a naive datetime. We assume UTC at the repo boundary so
-    domain models and JSON responses always carry a tz.
-    """
-    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
-
-
-def _utc_or_none(value: datetime | None) -> datetime | None:
-    return _utc(value) if value is not None else None
 
 from sqlalchemy import Select, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,6 +36,21 @@ from agentsofchaos_orchestrator.infrastructure.orm import (
     ProjectRecord,
     RunRecord,
 )
+
+
+def _utc(value: datetime) -> datetime:
+    """Re-attach UTC tzinfo when SQLite drops it on read.
+
+    All datetime columns are declared `DateTime(timezone=True)` and writes use
+    `datetime.now(timezone.utc)`, but SQLite's TEXT-based storage discards tz so
+    SQLAlchemy returns a naive datetime. We assume UTC at the repo boundary so
+    domain models and JSON responses always carry a tz.
+    """
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
+def _utc_or_none(value: datetime | None) -> datetime | None:
+    return _utc(value) if value is not None else None
 
 
 def _to_project(record: ProjectRecord) -> Project:
@@ -292,12 +292,16 @@ class NodeRepository:
         records = (await self._session.scalars(statement)).all()
         return tuple(_to_node(record) for record in records)
 
-    async def has_root_node(self, project_id: UUID) -> bool:
-        statement = select(NodeRecord.id).where(
+    async def get_root_node(self, project_id: UUID) -> Node | None:
+        statement = select(NodeRecord).where(
             NodeRecord.project_id == str(project_id),
             NodeRecord.kind == NodeKind.ROOT.value,
         )
-        return (await self._session.scalar(statement)) is not None
+        record = await self._session.scalar(statement)
+        return _to_node(record) if record is not None else None
+
+    async def has_root_node(self, project_id: UUID) -> bool:
+        return await self.get_root_node(project_id) is not None
 
     async def add(
         self,

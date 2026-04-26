@@ -60,7 +60,6 @@ def _diff_section(
     base_items = _section_items(base, section) if base is not None else ()
     head_items = _section_items(head, section)
     base_by_id = {item.id: item for item in base_items}
-    head_by_id = {item.id: item for item in head_items}
 
     seen: set[UUID] = set()
     diffs: list[ContextItemDiff] = []

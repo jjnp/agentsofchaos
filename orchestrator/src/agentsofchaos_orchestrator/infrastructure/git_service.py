@@ -4,7 +4,6 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypeVar
 
 from agentsofchaos_orchestrator.domain.errors import GitOperationError, InvalidRepositoryError
 
@@ -38,8 +37,6 @@ class GitMergeResult:
     stdout: str
     stderr: str
 
-
-GitErrorT = TypeVar("GitErrorT", bound=Exception)
 
 
 def _contains_conflict_marker(content: str) -> bool:
@@ -296,7 +293,7 @@ class GitService:
         self,
         repository_root: Path,
         *args: str,
-        error_type: type[GitErrorT] = InvalidRepositoryError,
+        error_type: type[Exception] = InvalidRepositoryError,
     ) -> str:
         completed = self._git(repository_root, *args, error_type=error_type)
         return completed.stdout.strip()
@@ -305,7 +302,7 @@ class GitService:
         self,
         repository_root: Path,
         *args: str,
-        error_type: type[GitErrorT] = InvalidRepositoryError,
+        error_type: type[Exception] = InvalidRepositoryError,
     ) -> subprocess.CompletedProcess[str]:
         completed = subprocess.run(
             ["git", *args],

@@ -9,10 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agentsofchaos_orchestrator.application.eventing import ApplicationEventRecorder
 from agentsofchaos_orchestrator.domain.enums import EventTopic, NodeKind, NodeStatus
-from agentsofchaos_orchestrator.domain.errors import (
-    ProjectNotFoundError,
-    RootNodeAlreadyExistsError,
-)
+from agentsofchaos_orchestrator.domain.errors import ProjectNotFoundError
 from agentsofchaos_orchestrator.domain.models import CodeSnapshot, ContextSnapshot, Node, Project
 from agentsofchaos_orchestrator.infrastructure.git_service import GitService
 from agentsofchaos_orchestrator.infrastructure.settings import Settings
@@ -45,24 +42,28 @@ class ProjectNodeService:
         async with self._unit_of_work() as unit_of_work:
             existing = await unit_of_work.projects.get_by_root_path(str(repository.root_path))
             if existing is not None:
-                return existing
-
-            project = await unit_of_work.projects.add(
-                root_path=str(repository.root_path),
-                git_dir=str(repository.git_dir),
-            )
+                project = existing
+                created = False
+            else:
+                project = await unit_of_work.projects.add(
+                    root_path=str(repository.root_path),
+                    git_dir=str(repository.git_dir),
+                )
+                created = True
             await unit_of_work.commit()
 
-        await self._events.record_and_publish(
-            project_id=project.id,
-            topic=EventTopic.PROJECT_OPENED,
-            payload={
-                "project_id": str(project.id),
-                "root_path": project.root_path,
-                "git_dir": project.git_dir,
-            },
-            created_at=self._now(),
-        )
+        if created:
+            await self._events.record_and_publish(
+                project_id=project.id,
+                topic=EventTopic.PROJECT_OPENED,
+                payload={
+                    "project_id": str(project.id),
+                    "root_path": project.root_path,
+                    "git_dir": project.git_dir,
+                },
+                created_at=self._now(),
+            )
+        await self._ensure_root_node(project)
         return project
 
     async def create_root_node(self, project_id: UUID, title: str | None = None) -> Node:
@@ -70,8 +71,13 @@ class ProjectNodeService:
             project = await unit_of_work.projects.get(project_id)
             if project is None:
                 raise ProjectNotFoundError(f"Unknown project: {project_id}")
-            if await unit_of_work.nodes.has_root_node(project_id):
-                raise RootNodeAlreadyExistsError(f"Project {project_id} already has a root node")
+        return await self._ensure_root_node(project, title=title)
+
+    async def _ensure_root_node(self, project: Project, title: str | None = None) -> Node:
+        async with self._unit_of_work() as unit_of_work:
+            existing_root = await unit_of_work.nodes.get_root_node(project.id)
+            if existing_root is not None:
+                return existing_root
 
             head_commit = self._git_service.current_head_commit(Path(project.root_path))
             timestamp = self._now()

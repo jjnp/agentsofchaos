@@ -10,11 +10,11 @@ from agentsofchaos_orchestrator.domain.errors import (
 )
 from agentsofchaos_orchestrator.infrastructure.sandbox.base import (
     SandboxBackend,
-    SandboxKind,
-    SandboxNetworkPolicy,
     SandboxedExecutionRequest,
     SandboxedExecutionSpec,
     SandboxedProcess,
+    SandboxKind,
+    SandboxNetworkPolicy,
 )
 
 
@@ -83,7 +83,7 @@ class BubblewrapSandboxBackend:
             "/",
             "/",
             "--",
-            "/usr/bin/true" if Path("/usr/bin/true").exists() else "/bin/true",
+            shutil.which("true") or "/bin/true",
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE,
         )

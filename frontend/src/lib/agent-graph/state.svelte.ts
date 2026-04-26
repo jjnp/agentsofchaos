@@ -26,6 +26,7 @@ import {
 	computeLayoutPlacements,
 	computeRingLayout,
 	getConnectionSegments,
+	getMaxNodeDepth,
 	getMergedConnectionSegments
 } from './layout';
 import type {
@@ -58,6 +59,11 @@ export class GraphStore {
 	recenterKey = $state(0);
 
 	#unsubscribe: (() => void) | null = null;
+	// Max graph depth (distance from root) we've already framed for. We
+	// bump `recenterKey` whenever the max advances so the canvas can
+	// smoothly fit the new ring/level into view — without re-fitting on
+	// every sibling that lands at an already-known depth.
+	#maxDepthSeen = 0;
 
 	#basePlacements = $derived<NodePlacement[]>(computeRingLayout(this.nodes));
 	placements = $derived<NodePlacement[]>(
@@ -106,6 +112,7 @@ export class GraphStore {
 		const graph: Graph = await this.#client.getGraph(projectId);
 		this.project = graph.project;
 		this.nodes = [...graph.nodes];
+		this.#bumpRecenterIfDepthAdvanced();
 	}
 
 	async createRootNode(): Promise<Node> {
@@ -278,6 +285,7 @@ export class GraphStore {
 		this.artifactsByNodeId.clear();
 		this.lastError = null;
 		this.connectionStatus = 'idle';
+		this.#maxDepthSeen = 0;
 	}
 
 	dispose(): void {
@@ -341,6 +349,15 @@ export class GraphStore {
 			const next = [...this.nodes];
 			next[idx] = node;
 			this.nodes = next;
+		}
+		this.#bumpRecenterIfDepthAdvanced();
+	}
+
+	#bumpRecenterIfDepthAdvanced(): void {
+		const currentMax = getMaxNodeDepth(this.nodes);
+		if (currentMax > this.#maxDepthSeen) {
+			this.#maxDepthSeen = currentMax;
+			this.recenterKey += 1;
 		}
 	}
 

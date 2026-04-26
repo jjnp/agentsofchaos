@@ -17,10 +17,10 @@ import pytest
 from agentsofchaos_orchestrator.domain.errors import SandboxUnavailableError
 from agentsofchaos_orchestrator.infrastructure.sandbox import (
     NoSandboxBackend,
-    SandboxKind,
-    SandboxNetworkPolicy,
     SandboxedExecutionRequest,
     SandboxedExecutionSpec,
+    SandboxKind,
+    SandboxNetworkPolicy,
     build_sandbox_backend,
 )
 from agentsofchaos_orchestrator.infrastructure.sandbox.bubblewrap import (
@@ -30,7 +30,11 @@ from agentsofchaos_orchestrator.infrastructure.sandbox.docker import DockerSandb
 from agentsofchaos_orchestrator.infrastructure.settings import Settings
 
 
-def _spec(tmp_path: Path, *, network: SandboxNetworkPolicy = SandboxNetworkPolicy.FULL) -> SandboxedExecutionSpec:
+def _spec(
+    tmp_path: Path,
+    *,
+    network: SandboxNetworkPolicy = SandboxNetworkPolicy.FULL,
+) -> SandboxedExecutionSpec:
     cwd = tmp_path / "work"
     cwd.mkdir()
     ro = tmp_path / "creds"

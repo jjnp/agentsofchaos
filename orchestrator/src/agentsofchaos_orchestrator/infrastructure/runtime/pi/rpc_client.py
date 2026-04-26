@@ -29,9 +29,9 @@ from agentsofchaos_orchestrator.infrastructure.runtime.pi.process import (
 )
 from agentsofchaos_orchestrator.infrastructure.sandbox.base import (
     SandboxBackend,
-    SandboxNetworkPolicy,
     SandboxedExecutionRequest,
     SandboxedExecutionSpec,
+    SandboxNetworkPolicy,
 )
 
 _DIALOG_METHODS_REQUIRING_RESPONSE = {"select", "confirm", "input", "editor"}
@@ -200,14 +200,12 @@ class PiRpcClient:
         stdin = process.stdin
         if stdin is not None and not stdin.is_closing():
             stdin.close()
-            try:
+            with suppress(RuntimeExecutionError):
                 await await_with_timeout(
                     stdin.wait_closed(),
                     timeout_seconds=self._shutdown_timeout_seconds,
                     description="closing pi stdin",
                 )
-            except RuntimeExecutionError:
-                pass
 
         if process.returncode is None:
             process.terminate()

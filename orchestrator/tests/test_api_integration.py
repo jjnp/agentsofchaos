@@ -8,13 +8,22 @@ the same shapes the frontend consumes.
 
 from __future__ import annotations
 
+import subprocess
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from httpx import Response
 
 from agentsofchaos_orchestrator.api.app import create_app
+from agentsofchaos_orchestrator.domain.enums import RuntimeCapability, RuntimeKind
+from agentsofchaos_orchestrator.domain.errors import RuntimeExecutionError
+from agentsofchaos_orchestrator.infrastructure.runtime import (
+    RuntimeEventSink,
+    RuntimeExecutionRequest,
+    RuntimeExecutionResult,
+)
 from agentsofchaos_orchestrator.infrastructure.settings import Settings
 from tests.helpers import initialize_test_repository
 
@@ -24,7 +33,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
     db_path = tmp_path / "api-int.sqlite3"
     settings = Settings(
         database_url=f"sqlite+aiosqlite:///{db_path}",
-        runtime_backend="noop",
+        runtime_backend=RuntimeKind.NOOP,
     )
     app = create_app(settings)
     with TestClient(app) as test_client:
@@ -36,6 +45,208 @@ def repo(tmp_path: Path) -> Path:
     repository_root = tmp_path / "repo"
     initialize_test_repository(repository_root)
     return repository_root
+
+
+class ApiConflictRuntimeAdapter:
+    def __init__(
+        self,
+        *,
+        resolve_conflict: bool,
+        leave_unmerged_index: bool = False,
+        fail_resolution: bool = False,
+    ) -> None:
+        self._resolve_conflict = resolve_conflict
+        self._leave_unmerged_index = leave_unmerged_index
+        self._fail_resolution = fail_resolution
+
+    @property
+    def runtime_kind(self) -> RuntimeKind:
+        return RuntimeKind.CUSTOM
+
+    @property
+    def capabilities(self) -> frozenset[RuntimeCapability]:
+        return frozenset({RuntimeCapability.CANCELLATION})
+
+    async def execute(
+        self,
+        *,
+        request: RuntimeExecutionRequest,
+        emit: RuntimeEventSink,
+    ) -> RuntimeExecutionResult:
+        del emit
+        if "You are resolving an Agents of Chaos conflicted merge node." in request.prompt:
+            if self._fail_resolution:
+                raise RuntimeExecutionError("simulated resolution runtime failure")
+            if self._resolve_conflict:
+                (request.worktree_path / "conflict.txt").write_text(
+                    "resolved by api runtime\n",
+                    encoding="utf-8",
+                )
+            if self._leave_unmerged_index:
+                _force_unmerged_index_entry(request.worktree_path, "conflict.txt")
+            return RuntimeExecutionResult(
+                transcript_text="USER: resolve\nASSISTANT: attempted resolution\n",
+                summary_text="Attempted merge resolution",
+            )
+
+        file_name, content = request.prompt.split(":", maxsplit=1)
+        (request.worktree_path / file_name).write_text(content, encoding="utf-8")
+        return RuntimeExecutionResult(
+            transcript_text=f"USER: {request.prompt}\nASSISTANT: wrote {file_name}\n",
+            summary_text=f"Wrote {file_name}",
+        )
+
+
+def _git_hash_object(worktree_path: Path, content: str) -> str:
+    completed = subprocess.run(
+        ["git", "hash-object", "-w", "--stdin"],
+        cwd=worktree_path,
+        input=content,
+        text=True,
+        check=True,
+        capture_output=True,
+    )
+    return completed.stdout.strip()
+
+
+def _force_unmerged_index_entry(worktree_path: Path, relative_path: str) -> None:
+    ancestor = _git_hash_object(worktree_path, "ancestor\n")
+    ours = _git_hash_object(worktree_path, "ours\n")
+    theirs = _git_hash_object(worktree_path, "theirs\n")
+    index_info = "".join(
+        (
+            f"0 {'0' * 40}\t{relative_path}\n",
+            f"100644 {ancestor} 1\t{relative_path}\n",
+            f"100644 {ours} 2\t{relative_path}\n",
+            f"100644 {theirs} 3\t{relative_path}\n",
+        )
+    )
+    subprocess.run(
+        ["git", "update-index", "--index-info"],
+        cwd=worktree_path,
+        input=index_info,
+        text=True,
+        check=True,
+        capture_output=True,
+    )
+
+
+def make_client_with_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    runtime: ApiConflictRuntimeAdapter,
+) -> TestClient:
+    db_path = tmp_path / "api-runtime.sqlite3"
+    settings = Settings(
+        database_url=f"sqlite+aiosqlite:///{db_path}",
+        runtime_backend=RuntimeKind.CUSTOM,
+    )
+    monkeypatch.setattr(
+        "agentsofchaos_orchestrator.api.app.build_runtime_adapter",
+        lambda _settings, *, sandbox: runtime,
+    )
+    return TestClient(create_app(settings))
+
+
+def response_json_object(response: Response) -> dict[str, object]:
+    body = response.json()
+    assert isinstance(body, dict)
+    return {str(key): value for key, value in body.items()}
+
+
+def wait_for_run_terminal(client: TestClient, project_id: str, run_id: str) -> dict[str, object]:
+    final_run: dict[str, object] | None = None
+    for _ in range(100):
+        final_run = response_json_object(client.get(f"/projects/{project_id}/runs/{run_id}"))
+        if final_run["status"] in {"succeeded", "failed", "cancelled"}:
+            return final_run
+    raise AssertionError(f"run did not reach terminal status: {final_run}")
+
+
+def create_merge_from_prompt_writes(
+    client: TestClient,
+    project_id: str,
+    root_id: str,
+    *,
+    source_prompt: str,
+    target_prompt: str,
+    expected_status: str,
+) -> dict[str, object]:
+    source_response = client.post(
+        f"/projects/{project_id}/nodes/{root_id}/runs/prompt",
+        json={"prompt": source_prompt},
+    )
+    source_run = response_json_object(source_response)
+    source_run = wait_for_run_terminal(client, project_id, str(source_run["id"]))
+    assert source_run["status"] == "succeeded", source_run
+
+    target_response = client.post(
+        f"/projects/{project_id}/nodes/{root_id}/runs/prompt",
+        json={"prompt": target_prompt},
+    )
+    target_run = response_json_object(target_response)
+    target_run = wait_for_run_terminal(client, project_id, str(target_run["id"]))
+    assert target_run["status"] == "succeeded", target_run
+
+    merge = client.post(
+        f"/projects/{project_id}/merges",
+        json={
+            "source_node_id": source_run["planned_child_node_id"],
+            "target_node_id": target_run["planned_child_node_id"],
+        },
+    )
+    assert merge.status_code == 201, merge.text
+    body = response_json_object(merge)
+    node = response_json_object_value(body["node"])
+    assert node["status"] == expected_status, body
+    return body
+
+
+def create_conflicted_merge(client: TestClient, project_id: str, root_id: str) -> dict[str, object]:
+    return create_merge_from_prompt_writes(
+        client,
+        project_id,
+        root_id,
+        source_prompt="conflict.txt:source",
+        target_prompt="conflict.txt:target",
+        expected_status="code_conflicted",
+    )
+
+
+def create_clean_merge(client: TestClient, project_id: str, root_id: str) -> dict[str, object]:
+    return create_merge_from_prompt_writes(
+        client,
+        project_id,
+        root_id,
+        source_prompt="source.txt:source",
+        target_prompt="target.txt:target",
+        expected_status="ready",
+    )
+
+
+def response_json_object_value(value: object) -> dict[str, object]:
+    assert isinstance(value, dict)
+    return {str(key): item for key, item in value.items()}
+
+
+def assert_no_resolution_node_or_report(client: TestClient, project_id: str) -> None:
+    graph = response_json_object(client.get(f"/projects/{project_id}/graph"))
+    graph_nodes = graph["nodes"]
+    assert isinstance(graph_nodes, list)
+    assert not [
+        node
+        for node in graph_nodes
+        if response_json_object_value(node)["kind"] == "resolution"
+    ]
+
+    artifacts_body = response_json_object(client.get(f"/projects/{project_id}/artifacts"))
+    artifacts = artifacts_body["artifacts"]
+    assert isinstance(artifacts, list)
+    assert not [
+        artifact
+        for artifact in artifacts
+        if response_json_object_value(artifact)["kind"] == "resolution_report"
+    ]
 
 
 def test_health_endpoint(client: TestClient) -> None:
@@ -53,7 +264,9 @@ def test_open_project_is_idempotent(client: TestClient, repo: Path) -> None:
 
     second = client.post("/projects/open", json={"path": str(repo)})
     assert second.status_code == 201
-    assert second.json()["id"] == project_id, "re-opening the same path must return the same project id"
+    assert second.json()["id"] == project_id, (
+        "re-opening the same path must return the same project id"
+    )
 
 
 def test_open_invalid_path_is_400(client: TestClient, tmp_path: Path) -> None:
@@ -70,23 +283,19 @@ def test_full_root_prompt_flow(client: TestClient, repo: Path) -> None:
     open_r = client.post("/projects/open", json={"path": str(repo)})
     project_id = open_r.json()["id"]
 
-    # Empty graph at first.
+    # Opening a project now creates the immutable root automatically.
     graph0 = client.get(f"/projects/{project_id}/graph").json()
-    assert graph0["nodes"] == []
-
-    # Create root.
-    root_r = client.post(f"/projects/{project_id}/nodes/root")
-    assert root_r.status_code == 201, root_r.text
-    root = root_r.json()
+    assert len(graph0["nodes"]) == 1
+    root = graph0["nodes"][0]
     assert root["kind"] == "root"
     assert root["status"] == "ready"
     assert root["parent_node_ids"] == []
     root_id = root["id"]
 
-    # Second root attempt → 409.
-    second_root = client.post(f"/projects/{project_id}/nodes/root")
-    assert second_root.status_code == 409
-    assert second_root.json()["error"]["code"] == "ROOT_NODE_ALREADY_EXISTS"
+    # The legacy explicit endpoint remains idempotent for old UI callers.
+    root_r = client.post(f"/projects/{project_id}/nodes/root")
+    assert root_r.status_code == 201, root_r.text
+    assert root_r.json()["id"] == root_id
 
     # Single-node fetch round-trips.
     by_id = client.get(f"/projects/{project_id}/nodes/{root_id}").json()
@@ -192,6 +401,293 @@ def test_unknown_artifact_returns_404(client: TestClient, repo: Path) -> None:
     )
     assert r.status_code == 404
     assert r.json()["error"]["code"] == "ARTIFACT_NOT_FOUND"
+
+
+def test_resolution_run_endpoint_creates_successor_node(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    repo: Path,
+) -> None:
+    with make_client_with_runtime(
+        tmp_path,
+        monkeypatch,
+        ApiConflictRuntimeAdapter(resolve_conflict=True),
+    ) as custom_client:
+        opened = response_json_object(
+            custom_client.post("/projects/open", json={"path": str(repo)})
+        )
+        project_id = str(opened["id"])
+        root = response_json_object(custom_client.post(f"/projects/{project_id}/nodes/root"))
+        merge = create_conflicted_merge(custom_client, project_id, str(root["id"]))
+        merge_node = response_json_object_value(merge["node"])
+        merge_node_id = str(merge_node["id"])
+
+        resolution = custom_client.post(
+            f"/projects/{project_id}/merges/{merge_node_id}/resolution-runs/prompt",
+            json={"prompt": "Resolve the conflict with the target behavior."},
+        )
+        assert resolution.status_code == 201, resolution.text
+        resolution_run = response_json_object(resolution)
+        assert resolution_run["source_node_id"] == merge_node_id
+        final_run = wait_for_run_terminal(custom_client, project_id, str(resolution_run["id"]))
+        assert final_run["status"] == "succeeded", final_run
+
+        graph = response_json_object(custom_client.get(f"/projects/{project_id}/graph"))
+        graph_nodes = graph["nodes"]
+        assert isinstance(graph_nodes, list)
+        resolution_nodes = [
+            response_json_object_value(node)
+            for node in graph_nodes
+            if response_json_object_value(node)["kind"] == "resolution"
+        ]
+        assert len(resolution_nodes) == 1, graph
+        resolution_node = resolution_nodes[0]
+        assert resolution_node["parent_node_ids"] == [merge_node_id]
+        assert resolution_node["status"] == "ready"
+
+        artifacts_body = response_json_object(
+            custom_client.get(
+                f"/projects/{project_id}/artifacts",
+                params={"node_id": str(resolution_node["id"])},
+            )
+        )
+        artifacts = artifacts_body["artifacts"]
+        assert isinstance(artifacts, list)
+        reports = [
+            response_json_object_value(artifact)
+            for artifact in artifacts
+            if response_json_object_value(artifact)["kind"] == "resolution_report"
+        ]
+        assert reports, artifacts
+        report = custom_client.get(
+            f"/projects/{project_id}/artifacts/{reports[0]['id']}/content"
+        )
+        assert report.status_code == 200, report.text
+        report_body = response_json_object(report)
+        assert report_body["conflicted_merge_node_id"] == merge_node_id
+        assert report_body["successor_node_id"] == resolution_node["id"]
+        assert report_body["resolution_run_id"] == final_run["id"]
+        assert report_body["validated"] is True
+        assert isinstance(report_body["source_merge_report_artifact_id"], str)
+        assert isinstance(report_body["runtime_transcript_artifact_id"], str)
+        assert report_body["runtime_transcript_artifact_id"] != reports[0]["id"]
+
+        all_artifacts_body = response_json_object(
+            custom_client.get(f"/projects/{project_id}/artifacts")
+        )
+        all_artifacts = all_artifacts_body["artifacts"]
+        assert isinstance(all_artifacts, list)
+        all_artifact_ids = {
+            response_json_object_value(artifact)["id"] for artifact in all_artifacts
+        }
+        assert report_body["source_merge_report_artifact_id"] in all_artifact_ids
+        assert report_body["runtime_transcript_artifact_id"] in all_artifact_ids
+
+
+def test_resolution_run_endpoint_rejects_non_merge_node(
+    client: TestClient,
+    repo: Path,
+) -> None:
+    project_id = client.post("/projects/open", json={"path": str(repo)}).json()["id"]
+    root = client.post(f"/projects/{project_id}/nodes/root").json()
+    response = client.post(
+        f"/projects/{project_id}/merges/{root['id']}/resolution-runs/prompt",
+        json={"prompt": "Resolve this."},
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "MERGE_INVALID_NODES"
+
+
+def test_resolution_run_endpoint_rejects_non_conflicted_merge_node(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    repo: Path,
+) -> None:
+    with make_client_with_runtime(
+        tmp_path,
+        monkeypatch,
+        ApiConflictRuntimeAdapter(resolve_conflict=True),
+    ) as custom_client:
+        opened = response_json_object(
+            custom_client.post("/projects/open", json={"path": str(repo)})
+        )
+        project_id = str(opened["id"])
+        root = response_json_object(custom_client.post(f"/projects/{project_id}/nodes/root"))
+        merge = create_clean_merge(custom_client, project_id, str(root["id"]))
+        merge_node = response_json_object_value(merge["node"])
+
+        response = custom_client.post(
+            f"/projects/{project_id}/merges/{merge_node['id']}/resolution-runs/prompt",
+            json={"prompt": "Resolve this clean merge."},
+        )
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "MERGE_INVALID_NODES"
+
+
+def test_resolution_run_endpoint_rejects_missing_merge_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    repo: Path,
+) -> None:
+    with make_client_with_runtime(
+        tmp_path,
+        monkeypatch,
+        ApiConflictRuntimeAdapter(resolve_conflict=True),
+    ) as custom_client:
+        opened = response_json_object(
+            custom_client.post("/projects/open", json={"path": str(repo)})
+        )
+        project_id = str(opened["id"])
+        root = response_json_object(custom_client.post(f"/projects/{project_id}/nodes/root"))
+        merge = create_conflicted_merge(custom_client, project_id, str(root["id"]))
+        merge_node = response_json_object_value(merge["node"])
+        merge_node_id = str(merge_node["id"])
+        report_path = repo / ".aoc" / "artifacts" / f"merge-report-{merge_node_id}.json"
+        report_path.unlink()
+
+        response = custom_client.post(
+            f"/projects/{project_id}/merges/{merge_node_id}/resolution-runs/prompt",
+            json={"prompt": "Resolve this."},
+        )
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "MERGE_ANCESTOR_ERROR"
+
+
+def test_resolution_run_endpoint_rejects_invalid_merge_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    repo: Path,
+) -> None:
+    with make_client_with_runtime(
+        tmp_path,
+        monkeypatch,
+        ApiConflictRuntimeAdapter(resolve_conflict=True),
+    ) as custom_client:
+        opened = response_json_object(
+            custom_client.post("/projects/open", json={"path": str(repo)})
+        )
+        project_id = str(opened["id"])
+        root = response_json_object(custom_client.post(f"/projects/{project_id}/nodes/root"))
+        merge = create_conflicted_merge(custom_client, project_id, str(root["id"]))
+        merge_node = response_json_object_value(merge["node"])
+        merge_node_id = str(merge_node["id"])
+        report_path = repo / ".aoc" / "artifacts" / f"merge-report-{merge_node_id}.json"
+        report_path.write_text("[]", encoding="utf-8")
+
+        response = custom_client.post(
+            f"/projects/{project_id}/merges/{merge_node_id}/resolution-runs/prompt",
+            json={"prompt": "Resolve this."},
+        )
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "MERGE_ANCESTOR_ERROR"
+
+
+def test_resolution_run_fails_when_agent_leaves_conflict_markers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    repo: Path,
+) -> None:
+    with make_client_with_runtime(
+        tmp_path,
+        monkeypatch,
+        ApiConflictRuntimeAdapter(resolve_conflict=False),
+    ) as custom_client:
+        opened = response_json_object(
+            custom_client.post("/projects/open", json={"path": str(repo)})
+        )
+        project_id = str(opened["id"])
+        root = response_json_object(custom_client.post(f"/projects/{project_id}/nodes/root"))
+        merge = create_conflicted_merge(custom_client, project_id, str(root["id"]))
+        merge_node = response_json_object_value(merge["node"])
+        merge_node_id = str(merge_node["id"])
+
+        resolution = custom_client.post(
+            f"/projects/{project_id}/merges/{merge_node_id}/resolution-runs/prompt",
+            json={"prompt": "Try resolving but leave the file unchanged."},
+        )
+        assert resolution.status_code == 201, resolution.text
+        resolution_run = response_json_object(resolution)
+        final_run = wait_for_run_terminal(custom_client, project_id, str(resolution_run["id"]))
+
+        assert final_run["status"] == "failed", final_run
+        error_message = final_run["error_message"]
+        assert isinstance(error_message, str)
+        assert "conflict markers" in error_message
+        assert_no_resolution_node_or_report(custom_client, project_id)
+
+
+def test_resolution_run_fails_when_agent_leaves_unmerged_index_entries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    repo: Path,
+) -> None:
+    with make_client_with_runtime(
+        tmp_path,
+        monkeypatch,
+        ApiConflictRuntimeAdapter(
+            resolve_conflict=True,
+            leave_unmerged_index=True,
+        ),
+    ) as custom_client:
+        opened = response_json_object(
+            custom_client.post("/projects/open", json={"path": str(repo)})
+        )
+        project_id = str(opened["id"])
+        root = response_json_object(custom_client.post(f"/projects/{project_id}/nodes/root"))
+        merge = create_conflicted_merge(custom_client, project_id, str(root["id"]))
+        merge_node = response_json_object_value(merge["node"])
+        merge_node_id = str(merge_node["id"])
+
+        resolution = custom_client.post(
+            f"/projects/{project_id}/merges/{merge_node_id}/resolution-runs/prompt",
+            json={"prompt": "Resolve text but forget to clear the git index."},
+        )
+        assert resolution.status_code == 201, resolution.text
+        resolution_run = response_json_object(resolution)
+        final_run = wait_for_run_terminal(custom_client, project_id, str(resolution_run["id"]))
+
+        assert final_run["status"] == "failed", final_run
+        error_message = final_run["error_message"]
+        assert isinstance(error_message, str)
+        assert "unmerged git index entries" in error_message
+        assert_no_resolution_node_or_report(custom_client, project_id)
+
+
+def test_resolution_run_fails_when_runtime_raises(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    repo: Path,
+) -> None:
+    with make_client_with_runtime(
+        tmp_path,
+        monkeypatch,
+        ApiConflictRuntimeAdapter(
+            resolve_conflict=False,
+            fail_resolution=True,
+        ),
+    ) as custom_client:
+        opened = response_json_object(
+            custom_client.post("/projects/open", json={"path": str(repo)})
+        )
+        project_id = str(opened["id"])
+        root = response_json_object(custom_client.post(f"/projects/{project_id}/nodes/root"))
+        merge = create_conflicted_merge(custom_client, project_id, str(root["id"]))
+        merge_node = response_json_object_value(merge["node"])
+        merge_node_id = str(merge_node["id"])
+
+        resolution = custom_client.post(
+            f"/projects/{project_id}/merges/{merge_node_id}/resolution-runs/prompt",
+            json={"prompt": "Try resolving."},
+        )
+        assert resolution.status_code == 201, resolution.text
+        resolution_run = response_json_object(resolution)
+        final_run = wait_for_run_terminal(custom_client, project_id, str(resolution_run["id"]))
+
+        assert final_run["status"] == "failed", final_run
+        error_message = final_run["error_message"]
+        assert isinstance(error_message, str)
+        assert "simulated resolution runtime failure" in error_message
+        assert_no_resolution_node_or_report(custom_client, project_id)
 
 
 def test_unknown_project_returns_404(client: TestClient) -> None:

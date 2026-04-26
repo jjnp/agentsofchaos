@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -25,9 +25,9 @@ from agentsofchaos_orchestrator.infrastructure.runtime import (
 )
 from agentsofchaos_orchestrator.infrastructure.sandbox import (
     SandboxBackend,
-    SandboxKind,
     SandboxedExecutionRequest,
     SandboxedProcess,
+    SandboxKind,
 )
 
 
@@ -231,7 +231,7 @@ class FakePiProcess:
 
 
 def build_request(tmp_path: Path) -> RuntimeExecutionRequest:
-    timestamp = datetime.now(timezone.utc)
+    timestamp = datetime.now(UTC)
     source_node = Node(
         id=uuid4(),
         project_id=uuid4(),

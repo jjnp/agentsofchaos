@@ -32,8 +32,7 @@ class InMemoryEventBus:
         finally:
             async with self._lock:
                 project_subscribers = self._subscribers.get(project_id)
-                if project_subscribers is None:
-                    return
-                project_subscribers.discard(queue)
-                if not project_subscribers:
-                    self._subscribers.pop(project_id, None)
+                if project_subscribers is not None:
+                    project_subscribers.discard(queue)
+                    if not project_subscribers:
+                        self._subscribers.pop(project_id, None)

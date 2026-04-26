@@ -56,7 +56,7 @@ class ProjectResponse(ApiModel):
     updated_at: datetime
 
     @classmethod
-    def from_domain(cls, project: Project) -> "ProjectResponse":
+    def from_domain(cls, project: Project) -> ProjectResponse:
         return cls.model_validate(project.model_dump())
 
 
@@ -73,7 +73,7 @@ class NodeResponse(ApiModel):
     originating_run_id: UUID | None = None
 
     @classmethod
-    def from_domain(cls, node: Node) -> "NodeResponse":
+    def from_domain(cls, node: Node) -> NodeResponse:
         return cls.model_validate(node.model_dump())
 
 
@@ -82,7 +82,7 @@ class GraphResponse(ApiModel):
     nodes: tuple[NodeResponse, ...]
 
     @classmethod
-    def from_domain(cls, graph: GraphSnapshot) -> "GraphResponse":
+    def from_domain(cls, graph: GraphSnapshot) -> GraphResponse:
         return cls(
             project=ProjectResponse.from_domain(graph.project),
             nodes=tuple(NodeResponse.from_domain(node) for node in graph.nodes),
@@ -120,7 +120,7 @@ class RunResponse(ApiModel):
     finished_at: datetime | None = None
 
     @classmethod
-    def from_domain(cls, run: Run) -> "RunResponse":
+    def from_domain(cls, run: Run) -> RunResponse:
         return cls.model_validate(run.model_dump())
 
 
@@ -132,7 +132,7 @@ class EventResponse(ApiModel):
     created_at: datetime
 
     @classmethod
-    def from_domain(cls, event: EventRecord) -> "EventResponse":
+    def from_domain(cls, event: EventRecord) -> EventResponse:
         return cls.model_validate(event.model_dump())
 
 
@@ -149,7 +149,7 @@ class CodeSnapshotResponse(ApiModel):
     created_at: datetime
 
     @classmethod
-    def from_domain(cls, snapshot: CodeSnapshot) -> "CodeSnapshotResponse":
+    def from_domain(cls, snapshot: CodeSnapshot) -> CodeSnapshotResponse:
         return cls.model_validate(snapshot.model_dump())
 
 
@@ -193,7 +193,7 @@ class ContextSnapshotResponse(ApiModel):
     created_at: datetime
 
     @classmethod
-    def from_domain(cls, snapshot: ContextSnapshot) -> "ContextSnapshotResponse":
+    def from_domain(cls, snapshot: ContextSnapshot) -> ContextSnapshotResponse:
         return cls.model_validate(snapshot.model_dump())
 
 

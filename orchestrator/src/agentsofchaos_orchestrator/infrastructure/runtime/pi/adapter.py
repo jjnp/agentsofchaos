@@ -21,17 +21,16 @@ from agentsofchaos_orchestrator.infrastructure.runtime.pi.context import build_c
 from agentsofchaos_orchestrator.infrastructure.runtime.pi.events import optional_object_dict
 from agentsofchaos_orchestrator.infrastructure.runtime.pi.process import await_with_timeout
 from agentsofchaos_orchestrator.infrastructure.runtime.pi.rpc_client import PiRpcClient
-from agentsofchaos_orchestrator.infrastructure.sandbox.base import (
-    SandboxBackend,
-    SandboxNetworkPolicy,
-)
-from agentsofchaos_orchestrator.infrastructure.sandbox.none_backend import NoSandboxBackend
 from agentsofchaos_orchestrator.infrastructure.runtime.pi.session_registry import (
     load_node_session_path,
     store_node_session_path,
 )
 from agentsofchaos_orchestrator.infrastructure.runtime.pi.transcript import build_transcript
-
+from agentsofchaos_orchestrator.infrastructure.sandbox.base import (
+    SandboxBackend,
+    SandboxNetworkPolicy,
+)
+from agentsofchaos_orchestrator.infrastructure.sandbox.none_backend import NoSandboxBackend
 
 # Default env names the Pi adapter pulls from os.environ. Anything else
 # stays inside the daemon — the sandbox layer relies on this whitelist

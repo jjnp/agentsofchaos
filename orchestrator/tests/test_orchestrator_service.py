@@ -6,7 +6,6 @@ import pytest
 
 from agentsofchaos_orchestrator.application.services import OrchestratorService
 from agentsofchaos_orchestrator.domain.enums import EventTopic, NodeKind, NodeStatus
-from agentsofchaos_orchestrator.domain.errors import RootNodeAlreadyExistsError
 from agentsofchaos_orchestrator.infrastructure.db import (
     create_engine,
     create_session_factory,
@@ -15,7 +14,6 @@ from agentsofchaos_orchestrator.infrastructure.db import (
 from agentsofchaos_orchestrator.infrastructure.event_bus import InMemoryEventBus
 from agentsofchaos_orchestrator.infrastructure.git_service import GitService
 from agentsofchaos_orchestrator.infrastructure.settings import Settings
-
 from tests.helpers import initialize_test_repository, run_git
 
 
@@ -86,7 +84,7 @@ async def test_create_root_node_persists_graph_and_event(tmp_path: Path) -> None
 
 
 @pytest.mark.asyncio
-async def test_second_root_node_is_rejected(tmp_path: Path) -> None:
+async def test_create_root_node_is_idempotent_after_auto_root(tmp_path: Path) -> None:
     repository_root = tmp_path / "repo"
     initialize_test_repository(repository_root)
     database_path = tmp_path / "orchestrator.db"
@@ -104,9 +102,13 @@ async def test_second_root_node_is_rejected(tmp_path: Path) -> None:
     )
 
     project = await service.open_project(repository_root)
-    await service.create_root_node(project.id)
+    graph = await service.get_graph(project.id)
+    assert len(graph.nodes) == 1
+    auto_root = graph.nodes[0]
 
-    with pytest.raises(RootNodeAlreadyExistsError):
-        await service.create_root_node(project.id)
+    explicit_root = await service.create_root_node(project.id)
+
+    assert explicit_root.id == auto_root.id
+    assert len((await service.get_graph(project.id)).nodes) == 1
 
     await engine.dispose()

@@ -3,12 +3,12 @@ from __future__ import annotations
 from agentsofchaos_orchestrator.infrastructure.sandbox.base import (
     AsyncStdin,
     SandboxBackend,
-    SandboxKind,
-    SandboxNetworkPolicy,
-    SandboxSpawn,
     SandboxedExecutionRequest,
     SandboxedExecutionSpec,
     SandboxedProcess,
+    SandboxKind,
+    SandboxNetworkPolicy,
+    SandboxSpawn,
 )
 from agentsofchaos_orchestrator.infrastructure.sandbox.factory import build_sandbox_backend
 from agentsofchaos_orchestrator.infrastructure.sandbox.none_backend import NoSandboxBackend

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -86,7 +87,7 @@ async def test_prompt_run_creates_child_node_commit_and_events(tmp_path: Path) -
 
     assert run.status is RunStatus.SUCCEEDED
     assert run.transcript_path is not None
-    assert Path(run.transcript_path).is_file()
+    assert await asyncio.to_thread(Path(run.transcript_path).is_file)
     assert child_node.kind is NodeKind.PROMPT
     assert child_node.parent_node_ids == (root_node.id,)
     assert len(graph.nodes) == 2

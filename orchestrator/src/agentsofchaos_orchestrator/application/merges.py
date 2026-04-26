@@ -5,7 +5,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -44,7 +43,10 @@ from agentsofchaos_orchestrator.domain.models import (
 )
 from agentsofchaos_orchestrator.infrastructure.git_service import GitMergeResult, GitService
 from agentsofchaos_orchestrator.infrastructure.settings import Settings
-from agentsofchaos_orchestrator.infrastructure.unit_of_work import UnitOfWorkFactory
+from agentsofchaos_orchestrator.infrastructure.unit_of_work import (
+    SqlAlchemyUnitOfWork,
+    UnitOfWorkFactory,
+)
 
 
 @dataclass(frozen=True)
@@ -405,14 +407,20 @@ def _ancestor_distances(node: Node, nodes_by_id: dict[UUID, Node]) -> dict[UUID,
     return distances
 
 
-async def _require_code_snapshot(unit_of_work: Any, node: Node) -> CodeSnapshot:
+async def _require_code_snapshot(
+    unit_of_work: SqlAlchemyUnitOfWork,
+    node: Node,
+) -> CodeSnapshot:
     snapshot = await unit_of_work.code_snapshots.get(node.code_snapshot_id)
     if snapshot is None:
         raise MergeAncestorError(f"Missing code snapshot for node {node.id}")
     return snapshot
 
 
-async def _require_context_snapshot(unit_of_work: Any, node: Node) -> ContextSnapshot:
+async def _require_context_snapshot(
+    unit_of_work: SqlAlchemyUnitOfWork,
+    node: Node,
+) -> ContextSnapshot:
     snapshot = await unit_of_work.context_snapshots.get(node.context_snapshot_id)
     if snapshot is None:
         raise MergeAncestorError(f"Missing context snapshot for node {node.id}")

@@ -77,7 +77,7 @@ class ApplicationEventRecorder:
         event: RuntimeEvent,
     ) -> None:
         created_at = self._now()
-        payload = {
+        payload: dict[str, object] = {
             "project_id": str(project_id),
             "run_id": str(run_id),
             "runtime_kind": runtime_kind.value,

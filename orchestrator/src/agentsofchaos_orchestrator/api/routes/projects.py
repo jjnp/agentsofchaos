@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -47,12 +48,16 @@ from agentsofchaos_orchestrator.infrastructure.event_bus import InMemoryEventBus
 from agentsofchaos_orchestrator.infrastructure.settings import Settings
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+ServiceDependency = Annotated[OrchestratorService, Depends(get_orchestrator_service)]
+EventBusDependency = Annotated[InMemoryEventBus, Depends(get_event_bus)]
+SettingsDependency = Annotated[Settings, Depends(get_settings)]
+OptionalUuidQuery = Annotated[UUID | None, Query()]
 
 
 @router.post("/open", response_model=ProjectResponse, status_code=201)
 async def open_project(
     request: OpenProjectRequest,
-    service: OrchestratorService = Depends(get_orchestrator_service),
+    service: ServiceDependency,
 ) -> ProjectResponse:
     project = await service.open_project(Path(request.path))
     return ProjectResponse.from_domain(project)
@@ -61,7 +66,7 @@ async def open_project(
 @router.get("/{project_id}/graph", response_model=GraphResponse)
 async def get_graph(
     project_id: UUID,
-    service: OrchestratorService = Depends(get_orchestrator_service),
+    service: ServiceDependency,
 ) -> GraphResponse:
     graph = await service.get_graph(project_id)
     return GraphResponse.from_domain(graph)
@@ -70,7 +75,7 @@ async def get_graph(
 @router.post("/{project_id}/nodes/root", response_model=NodeResponse, status_code=201)
 async def create_root_node(
     project_id: UUID,
-    service: OrchestratorService = Depends(get_orchestrator_service),
+    service: ServiceDependency,
 ) -> NodeResponse:
     node = await service.create_root_node(project_id)
     return NodeResponse.from_domain(node)
@@ -80,7 +85,7 @@ async def create_root_node(
 async def get_node(
     project_id: UUID,
     node_id: UUID,
-    service: OrchestratorService = Depends(get_orchestrator_service),
+    service: ServiceDependency,
 ) -> NodeResponse:
     node = await service.get_node(project_id=project_id, node_id=node_id)
     return NodeResponse.from_domain(node)
@@ -93,7 +98,7 @@ async def get_node(
 async def get_code_snapshot(
     project_id: UUID,
     snapshot_id: UUID,
-    service: OrchestratorService = Depends(get_orchestrator_service),
+    service: ServiceDependency,
 ) -> CodeSnapshotResponse:
     snapshot = await service.get_code_snapshot(
         project_id=project_id, snapshot_id=snapshot_id
@@ -108,7 +113,7 @@ async def get_code_snapshot(
 async def get_context_snapshot(
     project_id: UUID,
     snapshot_id: UUID,
-    service: OrchestratorService = Depends(get_orchestrator_service),
+    service: ServiceDependency,
 ) -> ContextSnapshotResponse:
     snapshot = await service.get_context_snapshot(
         project_id=project_id, snapshot_id=snapshot_id
@@ -161,7 +166,7 @@ def _node_diff_to_response(diff: NodeDiff) -> NodeDiffResponse:
 async def get_node_diff(
     project_id: UUID,
     node_id: UUID,
-    service: OrchestratorService = Depends(get_orchestrator_service),
+    service: ServiceDependency,
 ) -> NodeDiffResponse:
     diff = await service.get_node_diff(project_id=project_id, node_id=node_id)
     return _node_diff_to_response(diff)
@@ -212,7 +217,7 @@ def _context_diff_to_response(diff: ContextDiff) -> ContextDiffResponse:
 async def get_node_context_diff(
     project_id: UUID,
     node_id: UUID,
-    service: OrchestratorService = Depends(get_orchestrator_service),
+    service: ServiceDependency,
 ) -> ContextDiffResponse:
     diff = await service.get_node_context_diff(project_id=project_id, node_id=node_id)
     return _context_diff_to_response(diff)
@@ -227,7 +232,7 @@ async def prompt_node(
     project_id: UUID,
     node_id: UUID,
     request: PromptRunRequest,
-    service: OrchestratorService = Depends(get_orchestrator_service),
+    service: ServiceDependency,
 ) -> RunResponse:
     graph = await service.get_graph(project_id)
     if all(node.id != node_id for node in graph.nodes):
@@ -241,7 +246,7 @@ async def prompt_node(
 async def merge_nodes(
     project_id: UUID,
     request: MergeNodesRequest,
-    service: OrchestratorService = Depends(get_orchestrator_service),
+    service: ServiceDependency,
 ) -> MergeResponse:
     result = await service.merge_nodes(
         project_id=project_id,
@@ -270,7 +275,7 @@ async def merge_nodes(
 async def get_merge_report(
     project_id: UUID,
     node_id: UUID,
-    service: OrchestratorService = Depends(get_orchestrator_service),
+    service: ServiceDependency,
 ) -> MergeReportResponse:
     report = await service.get_merge_report(project_id=project_id, node_id=node_id)
     return MergeReportResponse(report=report)
@@ -285,7 +290,7 @@ async def prompt_merge_resolution(
     project_id: UUID,
     node_id: UUID,
     request: PromptRunRequest,
-    service: OrchestratorService = Depends(get_orchestrator_service),
+    service: ServiceDependency,
 ) -> RunResponse:
     run = await service.start_merge_resolution_prompt_run(
         project_id=project_id,
@@ -299,7 +304,7 @@ async def prompt_merge_resolution(
 async def get_run(
     project_id: UUID,
     run_id: UUID,
-    service: OrchestratorService = Depends(get_orchestrator_service),
+    service: ServiceDependency,
 ) -> RunResponse:
     run = await service.get_run(run_id)
     if run.project_id != project_id:
@@ -311,7 +316,7 @@ async def get_run(
 async def cancel_run(
     project_id: UUID,
     run_id: UUID,
-    service: OrchestratorService = Depends(get_orchestrator_service),
+    service: ServiceDependency,
 ) -> RunResponse:
     run = await service.get_run(run_id)
     if run.project_id != project_id:
@@ -323,7 +328,7 @@ async def cancel_run(
 @router.get("/{project_id}/events", response_model=tuple[EventResponse, ...])
 async def list_project_events(
     project_id: UUID,
-    service: OrchestratorService = Depends(get_orchestrator_service),
+    service: ServiceDependency,
 ) -> tuple[EventResponse, ...]:
     events = await service.list_events(project_id)
     return tuple(EventResponse.from_domain(event) for event in events)
@@ -332,9 +337,9 @@ async def list_project_events(
 @router.get("/{project_id}/events/stream")
 async def stream_project_events(
     project_id: UUID,
-    service: OrchestratorService = Depends(get_orchestrator_service),
-    event_bus: InMemoryEventBus = Depends(get_event_bus),
-    settings: Settings = Depends(get_settings),
+    service: ServiceDependency,
+    event_bus: EventBusDependency,
+    settings: SettingsDependency,
 ) -> StreamingResponse:
     historical_events = await service.list_events(project_id)
 
@@ -350,7 +355,7 @@ async def stream_project_events(
                         queue.get(),
                         timeout=settings.event_stream_keepalive_seconds,
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield ": keepalive\n\n"
                     continue
 
@@ -374,9 +379,9 @@ def _artifact_to_response(artifact: object) -> ArtifactResponse:
 )
 async def list_artifacts(
     project_id: UUID,
-    node_id: UUID | None = Query(default=None),
-    run_id: UUID | None = Query(default=None),
-    service: OrchestratorService = Depends(get_orchestrator_service),
+    service: ServiceDependency,
+    node_id: OptionalUuidQuery = None,
+    run_id: OptionalUuidQuery = None,
 ) -> ArtifactListResponse:
     artifacts = await service.list_artifacts(
         project_id, node_id=node_id, run_id=run_id
@@ -393,7 +398,7 @@ async def list_artifacts(
 async def get_artifact(
     project_id: UUID,
     artifact_id: UUID,
-    service: OrchestratorService = Depends(get_orchestrator_service),
+    service: ServiceDependency,
 ) -> ArtifactResponse:
     artifact = await service.get_artifact(
         project_id=project_id, artifact_id=artifact_id
@@ -407,7 +412,7 @@ async def get_artifact(
 async def get_artifact_content(
     project_id: UUID,
     artifact_id: UUID,
-    service: OrchestratorService = Depends(get_orchestrator_service),
+    service: ServiceDependency,
 ) -> FileResponse:
     artifact = await service.get_artifact(
         project_id=project_id, artifact_id=artifact_id

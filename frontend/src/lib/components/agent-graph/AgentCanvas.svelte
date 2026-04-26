@@ -100,10 +100,12 @@
 			: null
 	);
 
-	function recenterViewport() {
+	let hasFittedOnce = $state(false);
+	let recenterAnimFrame: number | null = null;
+
+	function computeFitViewport(): CanvasViewport | null {
 		if (store.placements.length === 0 || canvasWidth <= 0 || canvasHeight <= 0) {
-			viewport = { x: 0, y: 0, scale: 1 };
-			return;
+			return null;
 		}
 		const { minX, maxX, minY, maxY } = store.bounds;
 		const horizontalPadding = 240;
@@ -114,11 +116,48 @@
 		const scale = Math.min(Math.max(fitted, minScale), Math.min(maxScale, 1.2));
 		const centerX = (minX + maxX) / 2;
 		const centerY = (minY + maxY) / 2;
-		viewport = {
-			scale,
-			x: -centerX * scale,
-			y: -centerY * scale
+		return { scale, x: -centerX * scale, y: -centerY * scale };
+	}
+
+	function tweenViewportTo(target: CanvasViewport, durationMs = 600): void {
+		if (recenterAnimFrame !== null) {
+			cancelAnimationFrame(recenterAnimFrame);
+			recenterAnimFrame = null;
+		}
+		const start: CanvasViewport = { ...viewport };
+		const startTime = performance.now();
+		// Cubic in-out — feels right for "the canvas is settling on a new frame".
+		const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+		const step = (now: number): void => {
+			const t = Math.min(1, (now - startTime) / durationMs);
+			const e = ease(t);
+			viewport = {
+				x: start.x + (target.x - start.x) * e,
+				y: start.y + (target.y - start.y) * e,
+				scale: start.scale + (target.scale - start.scale) * e
+			};
+			recenterAnimFrame = t < 1 ? requestAnimationFrame(step) : null;
 		};
+		recenterAnimFrame = requestAnimationFrame(step);
+	}
+
+	function recenterViewport(): void {
+		const target = computeFitViewport();
+		if (target === null) {
+			// Nothing to fit yet — sit at the origin so the next fit lands smoothly.
+			viewport = { x: 0, y: 0, scale: 1 };
+			return;
+		}
+		// First fit lands instantly so the canvas doesn't visibly slide
+		// from {0,0,1} on initial paint. Every subsequent recenter (manual
+		// button, layout-mode switch, or new-depth advance from the store)
+		// animates to give a clear visual cue that the frame moved.
+		if (!hasFittedOnce) {
+			viewport = target;
+			hasFittedOnce = true;
+		} else {
+			tweenViewportTo(target);
+		}
 	}
 
 	let lastRecenterKey = $state(0);
@@ -134,6 +173,8 @@
 	});
 
 	// Auto-recenter when first nodes appear, otherwise let the user pan freely.
+	// (Subsequent automatic recenters are driven by the store bumping
+	// `recenterKey` whenever a new graph depth is reached for the first time.)
 	let lastNodeCount = $state(0);
 	$effect(() => {
 		const count = store.nodes.length;

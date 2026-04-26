@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from uuid import UUID, uuid4
 
 import pytest
-
-from uuid import UUID, uuid4
 
 from agentsofchaos_orchestrator.application.services import OrchestratorService
 from agentsofchaos_orchestrator.domain.enums import (
@@ -21,6 +20,7 @@ from agentsofchaos_orchestrator.domain.enums import (
     RuntimeCapability,
     RuntimeKind,
 )
+from agentsofchaos_orchestrator.domain.merge import ResolutionReport
 from agentsofchaos_orchestrator.infrastructure.db import (
     create_engine,
     create_session_factory,
@@ -382,6 +382,16 @@ async def test_agent_driven_resolution_run_creates_successor_node(tmp_path: Path
     daemon_state_dir = settings.daemon_state_dir_for_project(repository_root.resolve())
     report_path = daemon_state_dir / "artifacts" / f"resolution-report-{resolution_node.id}.json"
     assert report_path.is_file()
+    typed_report = ResolutionReport.model_validate_json(
+        report_path.read_text(encoding="utf-8"),
+    )
+    assert typed_report.conflicted_merge_node_id == merge_result.node.id
+    assert typed_report.successor_node_id == resolution_node.id
+    assert typed_report.resolution_run_id == run.id
+    assert typed_report.source_merge_report_artifact_id is not None
+    assert typed_report.runtime_transcript_artifact_id is not None
+    assert typed_report.runtime_transcript_artifact_id in typed_report.runtime_artifact_ids
+    assert typed_report.validated is True
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["conflicted_merge_node_id"] == str(merge_result.node.id)
     assert report["successor_node_id"] == str(resolution_node.id)
@@ -543,7 +553,10 @@ async def test_resolution_records_context_decisions(tmp_path: Path) -> None:
             file_name="branch-b.txt",
         ),
     )
-    _tgt_run, target_node = await target_service.run_prompt(seed_node.id, "ship hosted control plane first")
+    _tgt_run, target_node = await target_service.run_prompt(
+        seed_node.id,
+        "ship hosted control plane first",
+    )
 
     merge_result = await target_service.merge_nodes(
         project_id=project.id,

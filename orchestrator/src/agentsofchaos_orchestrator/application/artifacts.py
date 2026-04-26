@@ -2,17 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-from dataclasses import dataclass
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from agentsofchaos_orchestrator.application.outbox import OutboxDispatcher
 from agentsofchaos_orchestrator.domain.enums import ArtifactKind, EventTopic
 from agentsofchaos_orchestrator.domain.models import Artifact, EventRecord
-from agentsofchaos_orchestrator.application.outbox import OutboxDispatcher
 from agentsofchaos_orchestrator.infrastructure.event_bus import InMemoryEventBus
 from agentsofchaos_orchestrator.infrastructure.repositories import EventRepository
 from agentsofchaos_orchestrator.infrastructure.unit_of_work import UnitOfWorkFactory
@@ -118,7 +118,7 @@ class ArtifactRecorder:
         self,
         *,
         project_id: UUID,
-        run_id: UUID,
+        run_id: UUID | None,
         node_id: UUID | None,
         artifact_inputs: tuple[ArtifactInput, ...],
         created_at: datetime,
@@ -162,7 +162,7 @@ class ArtifactRecorder:
         media_type: str,
         metadata: dict[str, object],
     ) -> ArtifactInput | None:
-        if not path.is_file():
+        if not await asyncio.to_thread(path.is_file):
             return None
         sha256, size_bytes = await asyncio.to_thread(_hash_file, path)
         return ArtifactInput(

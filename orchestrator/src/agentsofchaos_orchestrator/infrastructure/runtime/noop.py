@@ -10,7 +10,6 @@ from agentsofchaos_orchestrator.infrastructure.runtime.base import (
     RuntimeExecutionResult,
 )
 
-
 # Tiny "fixture mode": when the prompt contains a line matching
 # `<filename>:<content>` the noop runtime writes that file in the
 # worktree. Pattern is intentionally narrow — bare filenames only,
