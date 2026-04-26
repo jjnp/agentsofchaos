@@ -21,10 +21,6 @@ class SnapshotNotFoundError(OrchestratorError):
     """Raised when a code or context snapshot identifier cannot be resolved."""
 
 
-class RootNodeAlreadyExistsError(OrchestratorError):
-    """Raised when a second root node is requested for a project."""
-
-
 class RunNotFoundError(OrchestratorError):
     """Raised when a run identifier cannot be resolved."""
 

@@ -17,7 +17,6 @@ from agentsofchaos_orchestrator.domain.errors import (
     MergeInvalidNodesError,
     NodeNotFoundError,
     ProjectNotFoundError,
-    RootNodeAlreadyExistsError,
     RunNotFoundError,
     RuntimeCancelledError,
     RuntimeExecutionError,
@@ -139,16 +138,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(
             status_code=404,
             content={"error": {"code": "ARTIFACT_NOT_FOUND", "message": str(error)}},
-        )
-
-    @app.exception_handler(RootNodeAlreadyExistsError)
-    async def handle_root_exists(
-        _request: Request,
-        error: RootNodeAlreadyExistsError,
-    ) -> JSONResponse:
-        return JSONResponse(
-            status_code=409,
-            content={"error": {"code": "ROOT_NODE_ALREADY_EXISTS", "message": str(error)}},
         )
 
     @app.exception_handler(MergeAncestorError)

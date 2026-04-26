@@ -45,11 +45,14 @@ Deliverables:
 - artifact entity
 - event record entity
 - repositories for persistence
-- root node creation from current `HEAD`
+- automatic root node creation from current `HEAD` as part of
+  `POST /projects/open` (and an idempotent `POST /nodes/root`
+  fallback that returns the existing root)
 - daemon-owned refs under `refs/aoc/nodes/<node-id>`
 
 Tests:
-- root node creation
+- automatic root node creation on project open + idempotency on
+  re-open
 - node immutability invariants
 - persistence round-trips
 - repository safety boundaries
@@ -317,9 +320,9 @@ The first production-worthy internal milestone is not “feature parity with the
 
 It is this:
 
-- a developer can open a repo locally
-- create a root node from `HEAD`
-- prompt from that node into a child
+- a developer can open a repo locally and the root node is created
+  automatically from `HEAD`
+- prompt from that root into a child
 - watch the child run live
 - inspect the child’s code and context
 - retry from the same parent into a sibling

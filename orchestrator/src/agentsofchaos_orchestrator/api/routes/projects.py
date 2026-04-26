@@ -59,6 +59,14 @@ async def open_project(
     request: OpenProjectRequest,
     service: ServiceDependency,
 ) -> ProjectResponse:
+    """Open or re-open a project, ensuring it has a root node.
+
+    Validates the path is a git repository, registers the project (or
+    returns the existing one if already opened), and creates a root
+    node from `HEAD` if none exists yet. The returned `Project` does
+    not embed the root — fetch `GET /projects/{id}/graph` to enumerate
+    nodes. Subsequent calls with the same path are idempotent.
+    """
     project = await service.open_project(Path(request.path))
     return ProjectResponse.from_domain(project)
 
@@ -77,6 +85,15 @@ async def create_root_node(
     project_id: UUID,
     service: ServiceDependency,
 ) -> NodeResponse:
+    """Idempotent root-node creation. Returns the existing root if any.
+
+    `POST /projects/open` already creates the root from `HEAD` so most
+    clients never need this endpoint. It stays as a safety net for the
+    rare case where opening a project produced no root (e.g. an
+    operator-recovery flow), and is safe to retry — calling it on a
+    project that already has a root returns that root unchanged. Status
+    is 201 in both cases for backward compatibility.
+    """
     node = await service.create_root_node(project_id)
     return NodeResponse.from_domain(node)
 

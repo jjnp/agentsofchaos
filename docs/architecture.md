@@ -267,8 +267,7 @@ Prompt-run creation should return the created run promptly while execution conti
 - no leaking infrastructure concepts like “container” or “worker image” into product APIs
 
 Recommended top-level operations:
-- create/open project
-- create root node
+- create/open project (creates the root node from `HEAD` as part of opening)
 - run prompt from node
 - merge nodes
 - list graph
@@ -414,17 +413,17 @@ The unit-of-work boundary exists to make these operations coherent:
 
 Recommended sequence:
 
-1. project opening and daemon-owned local state
+1. project opening and daemon-owned local state, including automatic
+   root node creation from `HEAD` as part of opening
 2. graph persistence schema
-3. root node creation from `HEAD`
-4. runtime adapter interface
-5. prompt run to child node flow
-6. transcript and event persistence
-7. typed context projection
-8. context diff and inspection
-9. merge flow with common-ancestor resolution
-10. context merge and conflict handling
-11. reconciliation and cleanup hardening
+3. runtime adapter interface
+4. prompt run to child node flow
+5. transcript and event persistence
+6. typed context projection
+7. context diff and inspection
+8. merge flow with common-ancestor resolution
+9. context merge and conflict handling
+10. reconciliation and cleanup hardening
 
 ## 13. Non-goals for the initial release
 
@@ -440,12 +439,12 @@ Not in the first serious implementation pass:
 
 The architecture is successful when the daemon can reliably support this user story:
 
-1. open a local repository
-2. create a root node from current `HEAD`
-3. run a prompt from that node and see a child node stream live output
-4. retry from the same parent and compare siblings
-5. inspect code and context diffs between nodes
-6. merge two nodes into an integration node from a common ancestor
-7. inspect both code merge and context merge results, including conflicts
+1. open a local repository — the root node materialises from `HEAD`
+   as part of opening
+2. run a prompt from that root and see a child node stream live output
+3. retry from the same parent and compare siblings
+4. inspect code and context diffs between nodes
+5. merge two nodes into an integration node from a common ancestor
+6. inspect both code merge and context merge results, including conflicts
 
 If the architecture cannot support that cleanly, it is not the right architecture.

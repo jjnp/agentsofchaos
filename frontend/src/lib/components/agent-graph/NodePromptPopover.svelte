@@ -109,7 +109,9 @@
 		{/if}
 	</form>
 
-	<TerminalOutput {store} {node} variant="compact" />
+	{#if originatingRun}
+		<TerminalOutput {store} {node} variant="compact" />
+	{/if}
 </div>
 
 <style>

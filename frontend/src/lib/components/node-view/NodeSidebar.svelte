@@ -34,9 +34,16 @@
 
 	$effect(() => {
 		// If the user navigates away from a merge node while the merge tab is active,
-		// fall back to output to keep the tab strip honest.
+		// fall back to a tab that makes sense for the new selection.
 		if (activeTab === 'merge' && !isMergeNode) {
-			activeTab = 'output';
+			activeTab = node?.originating_run_id ? 'output' : 'changes';
+		}
+		// Output only makes sense for nodes produced by a run. The root
+		// has no runtime stream — jump to Changes (which renders the
+		// diff against an empty tree, i.e. the repo state at root
+		// creation time, and is always meaningful).
+		if (!node?.originating_run_id && activeTab === 'output') {
+			activeTab = 'changes';
 		}
 	});
 
@@ -141,17 +148,18 @@
 
 	<section class="detail">
 		<div class="tabs" role="tablist">
-			<button
-				type="button"
-				class="tab"
-				class:tab--active={activeTab === 'output'}
-				role="tab"
-				aria-selected={activeTab === 'output'}
-				disabled={!node}
-				onclick={() => (activeTab = 'output')}
-			>
-				Output
-			</button>
+			{#if node?.originating_run_id}
+				<button
+					type="button"
+					class="tab"
+					class:tab--active={activeTab === 'output'}
+					role="tab"
+					aria-selected={activeTab === 'output'}
+					onclick={() => (activeTab = 'output')}
+				>
+					Output
+				</button>
+			{/if}
 			<button
 				type="button"
 				class="tab"
