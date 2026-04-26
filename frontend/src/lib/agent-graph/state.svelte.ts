@@ -56,7 +56,14 @@ export class GraphStore {
 	connectionStatus = $state<ConnectionStatus>('idle');
 	lastError = $state<string | null>(null);
 	activeLayoutMode = $state<LayoutMode>('rings');
+	// Bumping `recenterKey` signals the canvas to refit instantly — the
+	// path the user takes when they click the Recenter button or change
+	// layout mode. `smoothRecenterKey` signals an animated tween, used
+	// when the canvas auto-frames a newly-reached graph depth so the
+	// motion gives a clear "the frame moved" cue without disturbing
+	// in-flight gestures.
 	recenterKey = $state(0);
+	smoothRecenterKey = $state(0);
 
 	#unsubscribe: (() => void) | null = null;
 	// Max graph depth (distance from root) we've already framed for. We
@@ -109,9 +116,19 @@ export class GraphStore {
 
 	async refreshGraph(): Promise<void> {
 		const projectId = this.#requireProjectId();
-		const graph: Graph = await this.#client.getGraph(projectId);
+		// Re-fetch graph and events together. Events get pulled here too
+		// because the SSE stream sometimes silently drops the trailing
+		// run events on long pi runs, leaving the inspector tabs empty
+		// (which used to fall back to a misleading "mock" placeholder).
+		// Manual Refresh is the operator's recovery path; it should hand
+		// back the truth, not the partial truth the SSE managed to deliver.
+		const [graph, events] = await Promise.all([
+			this.#client.getGraph(projectId),
+			this.#client.listEvents(projectId)
+		]);
 		this.project = graph.project;
 		this.nodes = [...graph.nodes];
+		this.events = [...events];
 		this.#bumpRecenterIfDepthAdvanced();
 	}
 
@@ -357,7 +374,7 @@ export class GraphStore {
 		const currentMax = getMaxNodeDepth(this.nodes);
 		if (currentMax > this.#maxDepthSeen) {
 			this.#maxDepthSeen = currentMax;
-			this.recenterKey += 1;
+			this.smoothRecenterKey += 1;
 		}
 	}
 

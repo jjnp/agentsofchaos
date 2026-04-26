@@ -113,7 +113,12 @@
 		const worldWidth = Math.max(maxX - minX + horizontalPadding, 220);
 		const worldHeight = Math.max(maxY - minY + verticalPadding, 220);
 		const fitted = Math.min(canvasWidth / worldWidth, canvasHeight / worldHeight);
-		const scale = Math.min(Math.max(fitted, minScale), Math.min(maxScale, 1.2));
+		// Upper-cap at 0.85 (vs the canvas's 2.2 maxScale) so a graph
+		// with one or two nodes doesn't fill the entire canvas — small
+		// graphs deserve breathing room, not "huge node stretched edge
+		// to edge". Big graphs that don't fit at 0.85 zoom down via the
+		// fitted floor; minScale (0.5) is the absolute lower bound.
+		const scale = Math.min(Math.max(fitted, minScale), Math.min(maxScale, 0.85));
 		const centerX = (minX + maxX) / 2;
 		const centerY = (minY + maxY) / 2;
 		return { scale, x: -centerX * scale, y: -centerY * scale };
@@ -141,18 +146,22 @@
 		recenterAnimFrame = requestAnimationFrame(step);
 	}
 
-	function recenterViewport(): void {
+	function recenterViewport(animated: boolean): void {
 		const target = computeFitViewport();
 		if (target === null) {
-			// Nothing to fit yet — sit at the origin so the next fit lands smoothly.
 			viewport = { x: 0, y: 0, scale: 1 };
 			return;
 		}
-		// First fit lands instantly so the canvas doesn't visibly slide
-		// from {0,0,1} on initial paint. Every subsequent recenter (manual
-		// button, layout-mode switch, or new-depth advance from the store)
-		// animates to give a clear visual cue that the frame moved.
-		if (!hasFittedOnce) {
+		// First fit always lands instantly so the canvas doesn't visibly
+		// slide from {0,0,1} on initial paint. After that we honour the
+		// caller's intent: manual Recenter button (instant) vs auto
+		// depth-advance fit (animated) — animating manual recenter
+		// breaks any in-flight click/drag the user already started.
+		if (!hasFittedOnce || !animated) {
+			if (recenterAnimFrame !== null) {
+				cancelAnimationFrame(recenterAnimFrame);
+				recenterAnimFrame = null;
+			}
 			viewport = target;
 			hasFittedOnce = true;
 		} else {
@@ -161,15 +170,23 @@
 	}
 
 	let lastRecenterKey = $state(0);
+	let lastSmoothRecenterKey = $state(0);
 	onMount(() => {
 		lastRecenterKey = store.recenterKey;
-		recenterViewport();
+		lastSmoothRecenterKey = store.smoothRecenterKey;
+		recenterViewport(false);
 	});
 
 	$effect(() => {
 		if (store.recenterKey === lastRecenterKey) return;
 		lastRecenterKey = store.recenterKey;
-		recenterViewport();
+		recenterViewport(false);
+	});
+
+	$effect(() => {
+		if (store.smoothRecenterKey === lastSmoothRecenterKey) return;
+		lastSmoothRecenterKey = store.smoothRecenterKey;
+		recenterViewport(true);
 	});
 
 	// Auto-recenter when first nodes appear, otherwise let the user pan freely.
@@ -179,7 +196,7 @@
 	$effect(() => {
 		const count = store.nodes.length;
 		if (lastNodeCount === 0 && count > 0) {
-			recenterViewport();
+			recenterViewport(false);
 		}
 		lastNodeCount = count;
 	});

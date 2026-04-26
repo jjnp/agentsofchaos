@@ -14,7 +14,15 @@ export async function openProject(page: Page, repoPath: string = E2E_REPO_PATH) 
 	await expect(page.locator('.agent-canvas')).toBeVisible({ timeout: 15_000 });
 }
 
-/** Click "New root" if no root exists; otherwise just wait for the existing node. */
+/**
+ * Wait for the root node to render and select it so the popover is open.
+ *
+ * The orchestrator now auto-creates the root from HEAD on
+ * `POST /projects/open`, so in the normal flow the "New root" button
+ * never renders — we just wait for the node and click it. The button
+ * stays in the UI as a fallback for the rare case where opening a
+ * project produced no root, and this helper handles that path too.
+ */
 export async function createRoot(page: Page) {
 	const node = page.locator('.agent-node').first();
 	const newRootBtn = page.getByRole('button', { name: /^New root$/ });
@@ -27,6 +35,11 @@ export async function createRoot(page: Page) {
 		await newRootBtn.click();
 		await expect(node).toBeVisible({ timeout: 15_000 });
 	}
+
+	// Click the root to open the prompt popover. Manual `New root` does
+	// this implicitly via `store.createRootNode` setting selectedNodeId;
+	// auto-root does not, so the helper has to.
+	await page.locator('[data-agent-node-id]').first().dispatchEvent('click');
 }
 
 /** Send a prompt via the floating popover anchored to the selected node. */

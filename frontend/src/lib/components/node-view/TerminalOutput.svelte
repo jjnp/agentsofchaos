@@ -19,17 +19,7 @@
 	);
 	const isLive = $derived(originatingRun?.status === 'running');
 
-	type TerminalLine = { id: string; tone: 'info' | 'mock' | 'error'; text: string };
-
-	const MOCK_LINES: readonly TerminalLine[] = [
-		{ id: 'mock-1', tone: 'mock', text: '$ pi run --resume node-7e2f' },
-		{ id: 'mock-2', tone: 'mock', text: '✓ workspace materialized at /workspace' },
-		{ id: 'mock-3', tone: 'mock', text: '✓ context snapshot loaded (12 items)' },
-		{ id: 'mock-4', tone: 'mock', text: '› reading src/lib/agent-graph/layout.ts' },
-		{ id: 'mock-5', tone: 'mock', text: '› drafting refactor plan…' },
-		{ id: 'mock-6', tone: 'mock', text: '✎ edit: extract ring placement helper' },
-		{ id: 'mock-7', tone: 'mock', text: '⏵ waiting for live output (mock)' }
-	];
+	type TerminalLine = { id: string; tone: 'info' | 'error'; text: string };
 
 	const liveLines = $derived.by<TerminalLine[]>(() => {
 		if (!originatingRun) return [];
@@ -118,10 +108,8 @@
 		return `${prefix}${joined}`;
 	}
 
-	const lines = $derived<readonly TerminalLine[]>(
-		liveLines.length > 0 ? liveLines : MOCK_LINES
-	);
-	const showingMock = $derived(liveLines.length === 0);
+	const lines = $derived<readonly TerminalLine[]>(liveLines);
+	const isEmpty = $derived(liveLines.length === 0);
 
 	$effect(() => {
 		lines;
@@ -137,16 +125,22 @@
 	<header class="head">
 		<span class="dot" data-active={isLive}></span>
 		<span class="label">live output</span>
-		{#if showingMock}
-			<span class="tag">mock</span>
+		{#if isEmpty}
+			<span class="tag">no events</span>
 		{:else}
 			<span class="tag tag--live">{liveLines.length} lines</span>
 		{/if}
 	</header>
 	<div bind:this={scrollEl} class="body">
-		{#each lines as line (line.id)}
-			<div class="line line--{line.tone}">{line.text}</div>
-		{/each}
+		{#if isEmpty}
+			<div class="empty">
+				{isLive ? 'waiting for first event…' : 'no runtime events recorded for this node.'}
+			</div>
+		{:else}
+			{#each lines as line (line.id)}
+				<div class="line line--{line.tone}">{line.text}</div>
+			{/each}
+		{/if}
 	</div>
 </section>
 
@@ -222,12 +216,13 @@
 		white-space: pre-wrap;
 		word-break: break-word;
 	}
-	.line--mock {
-		color: color-mix(in srgb, var(--color-text-muted) 60%, var(--color-text));
-		opacity: 0.65;
-	}
 	.line--info {
 		color: #cfd7bc;
+	}
+	.empty {
+		color: var(--color-text-muted);
+		font-style: italic;
+		padding: 0.4rem 0.2rem;
 	}
 	.line--error {
 		color: var(--color-danger);
