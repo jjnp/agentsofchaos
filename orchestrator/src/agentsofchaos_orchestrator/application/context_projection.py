@@ -63,6 +63,7 @@ class ContextProjectionService:
         changed_files: tuple[str, ...],
         created_at: datetime,
         edits: tuple[ContextEdit, ...] = (),
+        read_file_paths: tuple[str, ...] = (),
     ) -> ContextSnapshot:
         sections = self._inherit_sections(source_context)
         sections[ContextSection.GOALS] = (
@@ -98,6 +99,7 @@ class ContextProjectionService:
             summary_text=summary_text,
             changed_files=changed_files,
             created_at=created_at,
+            read_file_paths=read_file_paths,
         )
 
     def project_resolution_child_context(
@@ -223,6 +225,7 @@ class ContextProjectionService:
         summary_text: str,
         changed_files: tuple[str, ...],
         created_at: datetime,
+        read_file_paths: tuple[str, ...] = (),
     ) -> ContextSnapshot:
         return ContextSnapshot(
             id=self._new_uuid(),
@@ -238,8 +241,24 @@ class ContextProjectionService:
             todos=sections[ContextSection.TODOS],
             risks=sections[ContextSection.RISKS],
             handoff_notes=sections[ContextSection.HANDOFF_NOTES],
-            read_files=source_context.read_files,
+            read_files=_merge_file_refs(source_context.read_files, read_file_paths),
             touched_files=tuple(FileReference(path=path) for path in changed_files),
             symbols=source_context.symbols,
             created_at=created_at,
         )
+
+
+def _merge_file_refs(
+    existing: tuple[FileReference, ...], new_paths: tuple[str, ...]
+) -> tuple[FileReference, ...]:
+    """Union-merge new read paths into the inherited list, deduplicating
+    by path and preserving the existing order. Empty paths skipped.
+    """
+    seen: dict[str, FileReference] = {}
+    for ref in existing:
+        seen.setdefault(ref.path, ref)
+    for path in new_paths:
+        stripped = path.strip()
+        if stripped and stripped not in seen:
+            seen[stripped] = FileReference(path=stripped)
+    return tuple(seen.values())

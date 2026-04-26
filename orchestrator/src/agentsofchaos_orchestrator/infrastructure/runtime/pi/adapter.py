@@ -26,6 +26,9 @@ from agentsofchaos_orchestrator.infrastructure.runtime.pi.session_registry impor
     load_node_session_path,
     store_node_session_path,
 )
+from agentsofchaos_orchestrator.infrastructure.runtime.pi.projection import (
+    extract_read_file_paths,
+)
 from agentsofchaos_orchestrator.infrastructure.runtime.pi.transcript import build_transcript
 from agentsofchaos_orchestrator.infrastructure.sandbox.base import (
     SandboxBackend,
@@ -277,6 +280,7 @@ class PiRuntimeAdapter:
                     "sourceSessionFile": source_session_file,
                     "contextInjected": contextual_prompt.injected,
                 },
+                read_file_paths=extract_read_file_paths(client.generated_messages),
             )
         except RuntimeCancelledError as error:
             final_state = await _safe_get_state(client)

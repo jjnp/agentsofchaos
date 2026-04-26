@@ -61,6 +61,12 @@ class RuntimeExecutionResult(RuntimeModel):
     metadata: dict[str, object] = Field(default_factory=dict)
     context_edits: tuple[ContextItemEdit, ...] = ()
     context_resolutions: tuple[ContextResolutionDecision, ...] = ()
+    # Files the runtime observed reading during the run (e.g. `read`
+    # tool calls, `cat`/`head`/`tail` bash invocations). Distinct from
+    # `touched_files` which the orchestrator computes from `git diff`
+    # — read evidence is provenance the runtime is best-positioned to
+    # emit. Empty when the runtime can't or doesn't track this.
+    read_file_paths: tuple[str, ...] = ()
 
 
 class RuntimeCancellationToken:

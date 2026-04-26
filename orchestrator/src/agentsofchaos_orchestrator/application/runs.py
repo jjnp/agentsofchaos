@@ -438,6 +438,7 @@ class RunApplicationService:
             child_kind=prepared_run.child_kind,
             context_edits=context_edits,
             context_resolutions=context_resolutions,
+            read_file_paths=runtime_result.read_file_paths,
         )
         child_node = await self._create_child_node(
             node_id=prepared_run.child_node_id,
@@ -641,6 +642,7 @@ class RunApplicationService:
         child_kind: NodeKind,
         context_edits: tuple[ContextEdit, ...] = (),
         context_resolutions: tuple[ContextResolutionRecord, ...] = (),
+        read_file_paths: tuple[str, ...] = (),
     ) -> tuple[CodeSnapshot, ContextSnapshot]:
         async with self._unit_of_work() as unit_of_work:
             code_snapshot = await unit_of_work.code_snapshots.add(
@@ -673,6 +675,7 @@ class RunApplicationService:
                     changed_files=changed_files,
                     created_at=created_at,
                     edits=context_edits,
+                    read_file_paths=read_file_paths,
                 )
             persisted_context = await unit_of_work.context_snapshots.add(child_context)
             await unit_of_work.commit()

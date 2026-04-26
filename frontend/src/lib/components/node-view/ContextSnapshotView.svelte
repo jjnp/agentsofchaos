@@ -228,6 +228,17 @@
 			{/each}
 		{/if}
 
+		{#if snapshot.read_files.length > 0}
+			<section class="section">
+				<p class="label">Read files</p>
+				<ul class="paths">
+					{#each snapshot.read_files as ref (ref.path)}
+						<li class="mono">{ref.path}</li>
+					{/each}
+				</ul>
+			</section>
+		{/if}
+
 		{#if snapshot.touched_files.length > 0}
 			<section class="section">
 				<p class="label">Touched files</p>
