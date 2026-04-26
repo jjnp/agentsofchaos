@@ -1,10 +1,10 @@
 <script lang="ts">
-	import type { Node, NodeId } from '$lib/orchestrator/contracts';
+	import type { NodeId } from '$lib/orchestrator/contracts';
 
-	import { structuralParentId } from '$lib/agent-graph/types';
+	import { structuralParentId, type GraphNode } from '$lib/agent-graph/types';
 
 	interface Props {
-		node: Node;
+		node: GraphNode;
 		x: number;
 		y: number;
 		isSelected: boolean;

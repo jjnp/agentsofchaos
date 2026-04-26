@@ -1,12 +1,13 @@
 <script lang="ts">
 	import type { GraphStore } from '$lib/agent-graph/state.svelte';
-	import type { Node, Run } from '$lib/orchestrator/contracts';
+	import { isPendingNode, type GraphNode } from '$lib/agent-graph/types';
+	import type { Run } from '$lib/orchestrator/contracts';
 
 	import TerminalOutput from '../node-view/TerminalOutput.svelte';
 
 	interface Props {
 		store: GraphStore;
-		node: Node;
+		node: GraphNode;
 		screenX: number;
 		screenY: number;
 	}
@@ -24,6 +25,7 @@
 	const runIsCancellable = $derived(
 		originatingRun?.status === 'queued' || originatingRun?.status === 'running'
 	);
+	const canPrompt = $derived(!isPendingNode(node));
 
 	async function submit() {
 		const trimmed = prompt.trim();
@@ -59,13 +61,14 @@
 	onpointerdown={(event) => event.stopPropagation()}
 	onwheel={(event) => event.stopPropagation()}
 >
-	<form
-		class="form"
-		onsubmit={(event) => {
-			event.preventDefault();
-			void submit();
-		}}
-	>
+	{#if canPrompt}
+		<form
+			class="form"
+			onsubmit={(event) => {
+				event.preventDefault();
+				void submit();
+			}}
+		>
 		<textarea
 			bind:this={textareaEl}
 			class="textarea"
@@ -107,7 +110,8 @@
 		{#if error}
 			<p class="error">{error}</p>
 		{/if}
-	</form>
+		</form>
+	{/if}
 
 	{#if originatingRun}
 		<TerminalOutput {store} {node} variant="compact" />

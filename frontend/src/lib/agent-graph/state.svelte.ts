@@ -29,6 +29,7 @@ import {
 	getMaxNodeDepth,
 	getMergedConnectionSegments
 } from './layout';
+import { isPendingNode, type GraphNode, type PendingNode } from './types';
 import type {
 	ConnectionSegment,
 	LayoutMode,
@@ -42,7 +43,7 @@ export class GraphStore {
 	readonly #client: OrchestratorClient;
 
 	project = $state<Project | null>(null);
-	nodes = $state<Node[]>([]);
+	nodes = $state<GraphNode[]>([]);
 	selectedNodeId = $state<NodeId | null>(null);
 	events = $state<EventRecord[]>([]);
 	runsById = new SvelteMap<RunId, Run>();
@@ -53,6 +54,7 @@ export class GraphStore {
 	diffsByNodeId = new SvelteMap<NodeId, NodeDiff>();
 	contextDiffsByNodeId = new SvelteMap<NodeId, ContextDiff>();
 	artifactsByNodeId = new SvelteMap<NodeId, readonly Artifact[]>();
+	pendingNodesById = new SvelteMap<NodeId, PendingNode>();
 	connectionStatus = $state<ConnectionStatus>('idle');
 	lastError = $state<string | null>(null);
 	activeLayoutMode = $state<LayoutMode>('rings');
@@ -85,10 +87,10 @@ export class GraphStore {
 		getMergedConnectionSegments(this.nodes, this.placements)
 	);
 	bounds = $derived(computeBounds(this.placements));
-	selectedNode = $derived<Node | null>(
+	selectedNode = $derived<GraphNode | null>(
 		this.selectedNodeId ? (this.nodes.find((n) => n.id === this.selectedNodeId) ?? null) : null
 	);
-	rootNodes = $derived<Node[]>(this.nodes.filter((n) => n.parent_node_ids.length === 0));
+	rootNodes = $derived<GraphNode[]>(this.nodes.filter((n) => n.parent_node_ids.length === 0));
 	runsForSelectedNode = $derived<Run[]>(
 		this.selectedNodeId === null
 			? []
@@ -127,7 +129,7 @@ export class GraphStore {
 			this.#client.listEvents(projectId)
 		]);
 		this.project = graph.project;
-		this.nodes = [...graph.nodes];
+		this.#mergeAuthoritativeNodes([...graph.nodes]);
 		this.events = [...events];
 		this.#bumpRecenterIfDepthAdvanced();
 	}
@@ -144,6 +146,7 @@ export class GraphStore {
 		const projectId = this.#requireProjectId();
 		const run = await this.#client.promptNode(projectId, nodeId, prompt);
 		this.runsById.set(run.id, run);
+		this.#upsertPendingNodeFromRun(run, 'prompt', true);
 		return run;
 	}
 
@@ -223,6 +226,7 @@ export class GraphStore {
 		const projectId = this.#requireProjectId();
 		const run = await this.#client.runMergeResolutionPrompt(projectId, mergeNodeId, prompt);
 		this.runsById.set(run.id, run);
+		this.#upsertPendingNodeFromRun(run, 'resolution', true);
 		return run;
 	}
 
@@ -311,6 +315,7 @@ export class GraphStore {
 		this.diffsByNodeId.clear();
 		this.contextDiffsByNodeId.clear();
 		this.artifactsByNodeId.clear();
+		this.pendingNodesById.clear();
 		this.lastError = null;
 		this.connectionStatus = 'idle';
 		this.#maxDepthSeen = 0;
@@ -330,14 +335,18 @@ export class GraphStore {
 				this.#touchGraphFromEvent();
 				break;
 			case 'run_created':
+				this.#touchPendingNodeFromRunCreatedEvent(event);
+				this.#touchRunFromEvent(event);
+				break;
 			case 'run_started':
-			case 'run_succeeded':
 			case 'run_failed':
 			case 'run_cancelled':
 				this.#touchRunFromEvent(event);
-				if (event.topic === 'run_succeeded') {
-					this.#touchGraphFromEvent();
-				}
+				this.#touchPendingNodeStatusFromEvent(event);
+				break;
+			case 'run_succeeded':
+				this.#touchRunFromEvent(event);
+				this.#touchGraphFromEvent();
 				break;
 			case 'runtime_event':
 			case 'artifact_created':
@@ -363,13 +372,105 @@ export class GraphStore {
 			.getRun(this.project.id, runId)
 			.then((run) => {
 				this.runsById.set(run.id, run);
+				this.#syncPendingNodeStatus(run);
 			})
 			.catch((error: unknown) => {
 				this.lastError = String(error);
 			});
 	}
 
+	#touchPendingNodeFromRunCreatedEvent(event: EventRecord): void {
+		const runId = extractRunId(event);
+		const childId = extractNodeId(event.payload['planned_child_node_id']);
+		const sourceNodeId = extractNodeId(event.payload['source_node_id']);
+		if (!runId || !childId || !sourceNodeId || !this.project) return;
+		const sourceNode = this.nodes.find((node) => node.id === sourceNodeId);
+		if (!sourceNode) return;
+		const prompt = typeof event.payload['prompt'] === 'string' ? event.payload['prompt'] : '';
+		const existingRun = this.runsById.get(runId);
+		const run: Run = existingRun ?? {
+			id: runId,
+			project_id: this.project.id,
+			source_node_id: sourceNodeId,
+			prompt,
+			planned_child_node_id: childId,
+			status: 'running',
+			runtime: event.payload['runtime'] === 'pi' ? 'pi' : 'noop',
+			sandbox: event.payload['sandbox'] === 'docker' || event.payload['sandbox'] === 'bubblewrap'
+				? event.payload['sandbox']
+				: 'none',
+			worktree_path: null,
+			transcript_path: null,
+			error_message: null,
+			started_at: null,
+			finished_at: null
+		};
+		this.#upsertPendingNodeFromRun(run, sourceNode.kind === 'merge' ? 'resolution' : 'prompt', false);
+	}
+
+	#touchPendingNodeStatusFromEvent(event: EventRecord): void {
+		const runId = extractRunId(event);
+		if (!runId) return;
+		const run = this.runsById.get(runId);
+		if (run) {
+			this.#syncPendingNodeStatus(run);
+		}
+	}
+
+	#syncPendingNodeStatus(run: Run): void {
+		if (!run.planned_child_node_id) return;
+		const pending = this.pendingNodesById.get(run.planned_child_node_id);
+		if (!pending) return;
+		const status = run.status === 'failed' || run.status === 'cancelled' ? run.status : 'running';
+		this.pendingNodesById.set(pending.id, { ...pending, status });
+		this.#rebuildNodesKeepingPending();
+	}
+
+	#upsertPendingNodeFromRun(run: Run, kind: PendingNode['kind'], select: boolean): void {
+		if (!run.planned_child_node_id) return;
+		if (this.nodes.some((node) => !isPendingNode(node) && node.id === run.planned_child_node_id)) {
+			if (select) this.selectedNodeId = run.planned_child_node_id;
+			return;
+		}
+		const existing = this.pendingNodesById.get(run.planned_child_node_id);
+		const parentNode = this.nodes.find((node) => node.id === run.source_node_id);
+		const pending: PendingNode = {
+			pending: true,
+			id: run.planned_child_node_id,
+			project_id: run.project_id,
+			kind,
+			parent_node_ids: [run.source_node_id],
+			status: run.status === 'failed' || run.status === 'cancelled' ? run.status : 'running',
+			title: promptTitle(run.prompt),
+			created_at: existing?.created_at ?? run.started_at ?? new Date().toISOString(),
+			originating_run_id: run.id
+		};
+		if (!parentNode && !existing) return;
+		this.pendingNodesById.set(pending.id, pending);
+		this.#rebuildNodesKeepingPending();
+		if (select) {
+			this.selectedNodeId = pending.id;
+		}
+	}
+
+	#mergeAuthoritativeNodes(nodes: Node[]): void {
+		const authoritativeIds = new Set(nodes.map((node) => node.id));
+		for (const id of this.pendingNodesById.keys()) {
+			if (authoritativeIds.has(id)) {
+				this.pendingNodesById.delete(id);
+			}
+		}
+		this.nodes = [...nodes, ...this.pendingNodesById.values()];
+	}
+
+	#rebuildNodesKeepingPending(): void {
+		const durableNodes = this.nodes.filter((node): node is Node => !isPendingNode(node));
+		this.#mergeAuthoritativeNodes(durableNodes);
+		this.#bumpRecenterIfDepthAdvanced();
+	}
+
 	#upsertNode(node: Node): void {
+		this.pendingNodesById.delete(node.id);
 		const idx = this.nodes.findIndex((n) => n.id === node.id);
 		if (idx === -1) {
 			this.nodes = [...this.nodes, node];
@@ -400,4 +501,13 @@ export class GraphStore {
 function extractRunId(event: EventRecord): RunId | null {
 	const candidate = event.payload['run_id'];
 	return typeof candidate === 'string' ? (candidate as RunId) : null;
+}
+
+function extractNodeId(value: unknown): NodeId | null {
+	return typeof value === 'string' ? (value as NodeId) : null;
+}
+
+function promptTitle(prompt: string): string {
+	const singleLine = prompt.replace(/\s+/g, ' ').trim();
+	return singleLine.length > 48 ? `${singleLine.slice(0, 47)}…` : singleLine || 'Running prompt';
 }

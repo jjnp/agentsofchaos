@@ -742,13 +742,13 @@ def _to_context_resolution(
 
 
 def _default_child_title(source_node: Node, committed_sha: str, prompt: str) -> str:
-    if source_node.kind is NodeKind.MERGE and source_node.status in {
-        NodeStatus.CODE_CONFLICTED,
-        NodeStatus.CONTEXT_CONFLICTED,
-        NodeStatus.BOTH_CONFLICTED,
-    }:
-        return f"Resolution @ {committed_sha[:12]} · {prompt[:32]}"
-    return f"Prompt @ {committed_sha[:12]} · {prompt[:32]}"
+    del source_node, committed_sha
+    return _prompt_title(prompt)
+
+
+def _prompt_title(prompt: str) -> str:
+    single_line = " ".join(prompt.split())
+    return single_line[:48] or "Prompt"
 
 
 def _resolution_prompt(
@@ -775,4 +775,3 @@ def _resolution_prompt(
             report_text,
         )
     )
-
