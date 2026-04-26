@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { NodeId } from '$lib/orchestrator/contracts';
 
-	import { structuralParentId, type GraphNode } from '$lib/agent-graph/types';
+	import { isPendingNode, structuralParentId, type GraphNode } from '$lib/agent-graph/types';
 
 	interface Props {
 		node: GraphNode;
@@ -29,6 +29,7 @@
 
 	const isRoot = $derived(structuralParentId(node) === null);
 	const isRunning = $derived(node.status === 'running');
+	const isPending = $derived(isPendingNode(node));
 	const isLeftSide = $derived(!isRoot && x < 0);
 	const labelAnchor = $derived<LabelAnchor>(isRoot ? 'middle' : isLeftSide ? 'end' : 'start');
 	const labelOffsetX = $derived(isRoot ? 0 : isLeftSide ? -24 : 24);
@@ -50,6 +51,7 @@
 	class:status-both-conflicted={node.status === 'both_conflicted'}
 	class:kind-merge={node.kind === 'merge'}
 	class:kind-resolution={node.kind === 'resolution'}
+	class:pending={isPending}
 	transform="translate({x} {y})"
 	tabindex="0"
 	role="button"

@@ -23,6 +23,14 @@
  *
  * Run with: `npx playwright test --config playwright.demo.config.ts`.
  * Wall clock is dominated by the LLM — expect 10–15 min total.
+ *
+ * Note on ghost-child nodes: every prompt fires a pending placeholder
+ * node into the graph immediately so the user sees "ok, the run
+ * started" before pi finishes. Pending nodes carry the
+ * `.agent-node.pending` CSS class. We filter them out of node-count
+ * waits and click targets — the demo is about the durable graph; the
+ * pending placeholder is a UX preview the gif captures incidentally
+ * but never addresses by selector.
  */
 
 import { expect, test } from '@playwright/test';
@@ -78,10 +86,12 @@ test('graph-native demo: tic tac toe → 3-player → AI opponent → merge', as
 	//    just wait for it to render and click it to open the prompt
 	//    popover. The "New root" button only appears in the (now rare)
 	//    case where opening the project produced no root.
-	const rootNode = page.locator('.agent-node').first();
-	await expect(rootNode).toBeVisible({ timeout: 15_000 });
+	// Filter to durable nodes only — pending ghost-children render as
+	// `[data-agent-node-id]` too but can't be prompted.
+	const durableNodes = page.locator('.agent-node:not(.pending)[data-agent-node-id]');
+	await expect(durableNodes.first()).toBeVisible({ timeout: 15_000 });
 	await beat(700);
-	await page.locator('[data-agent-node-id]').first().dispatchEvent('click');
+	await durableNodes.first().dispatchEvent('click');
 	await beat(500);
 
 	// 3) Prompt the root → write the game. Prompts are written so the
@@ -100,8 +110,14 @@ test('graph-native demo: tic tac toe → 3-player → AI opponent → merge', as
 	await beat(1200);
 
 	// Show off the freshly-landed node — every tab gets a beat so the
-	// gif viewer can read each one.
-	const seedNode = page.locator('[data-agent-node-id][aria-label*="Tic tac toe"]').first();
+	// gif viewer can read each one. `:not(.pending)` is defence in
+	// depth: by the time waitForNodeCount returns the durable has
+	// already replaced the pending in-place, but if the run-completed
+	// SSE event lands mid-locator-resolution we don't want to grab a
+	// transient ghost-child whose Output tab has nothing to show.
+	const seedNode = page
+		.locator('.agent-node:not(.pending)[data-agent-node-id][aria-label*="Tic tac toe"]')
+		.first();
 	await tourTabsOn(page, seedNode, ['Output', 'Changes', 'Context', 'Events']);
 
 	// 4) Branch A — re-anchor to the seed and prompt for 3-player mode.
@@ -124,7 +140,9 @@ test('graph-native demo: tic tac toe → 3-player → AI opponent → merge', as
 	// run commits, but downstream consumers (merge classifier) want
 	// the run-state transition to settle.
 	await beat(1500);
-	const branchA = page.locator('[data-agent-node-id][aria-label*="3-player mode"]').first();
+	const branchA = page
+		.locator('.agent-node:not(.pending)[data-agent-node-id][aria-label*="3-player mode"]')
+		.first();
 	await tourTabsOn(page, branchA, ['Output', 'Changes', 'Context']);
 
 	// 5) Branch B — re-anchor to the seed, ask for a random AI opponent
@@ -141,7 +159,9 @@ test('graph-native demo: tic tac toe → 3-player → AI opponent → merge', as
 	await popover.getByRole('button', { name: /^Send$/ }).click();
 	await waitForNodeCount(page, 4, RUN_TIMEOUT_MS);
 	await beat(1500);
-	const branchB = page.locator('[data-agent-node-id][aria-label*="Random AI"]').first();
+	const branchB = page
+		.locator('.agent-node:not(.pending)[data-agent-node-id][aria-label*="Random AI"]')
+		.first();
 	await tourTabsOn(page, branchB, ['Output', 'Changes', 'Context']);
 
 	// 6) Recenter, then anchor the popover at root so it sits at the
@@ -149,7 +169,7 @@ test('graph-native demo: tic tac toe → 3-player → AI opponent → merge', as
 	//    (Same trick the resolution e2e test uses.)
 	await page.getByRole('button', { name: /^Recenter$/ }).dispatchEvent('click');
 	await beat(900);
-	await page.locator('[data-agent-node-id]').first().dispatchEvent('click');
+	await durableNodes.first().dispatchEvent('click');
 	await beat(400);
 
 	// 7) Drag-merge branch A onto branch B. Both touch tictactoe.js in
@@ -210,11 +230,18 @@ test('graph-native demo: tic tac toe → 3-player → AI opponent → merge', as
 });
 
 /**
- * Poll for at least `n` nodes on the canvas, clicking the side-panel
- * "Refresh" button between checks so we don't depend on the SSE event
- * stream alone. Pi runs are long-lived (60–90s of LLM work) and the
- * SSE connection sometimes silently misses the trailing
- * `prompt_node_created` event — refreshing forces a clean GET /graph.
+ * Poll for at least `n` *durable* nodes on the canvas, clicking the
+ * side-panel "Refresh" button between checks so we don't depend on
+ * the SSE event stream alone.
+ *
+ * Pi runs are long-lived (60–90s of LLM work) and the SSE connection
+ * sometimes silently misses the trailing `prompt_node_created` event
+ * — refreshing forces a clean `GET /graph`. We also filter pending
+ * ghost-children out of the count: those render the moment a prompt
+ * is sent (they're a UX preview, not a finished result), so a naive
+ * `.agent-node` count would cross the threshold before the LLM
+ * actually wrote anything to the worktree, leaving subsequent clicks
+ * targeting placeholders we can't prompt or drag-merge.
  */
 async function waitForNodeCount(
 	page: import('@playwright/test').Page,
@@ -224,14 +251,14 @@ async function waitForNodeCount(
 	const deadline = Date.now() + timeoutMs;
 	const refresh = page.getByRole('button', { name: /^Refresh$/ });
 	while (Date.now() < deadline) {
-		const count = await page.locator('.agent-node').count();
+		const count = await page.locator('.agent-node:not(.pending)').count();
 		if (count >= n) return;
 		// dispatchEvent so the popover (z-index 25) doesn't eat the click.
 		await refresh.first().dispatchEvent('click').catch(() => {});
 		await new Promise((r) => setTimeout(r, 2_500));
 	}
-	const got = await page.locator('.agent-node').count();
-	throw new Error(`waited ${timeoutMs}ms for ${n} nodes, got ${got}`);
+	const got = await page.locator('.agent-node:not(.pending)').count();
+	throw new Error(`waited ${timeoutMs}ms for ${n} durable nodes, got ${got}`);
 }
 
 /**

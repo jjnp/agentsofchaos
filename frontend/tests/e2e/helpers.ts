@@ -38,8 +38,12 @@ export async function createRoot(page: Page) {
 
 	// Click the root to open the prompt popover. Manual `New root` does
 	// this implicitly via `store.createRootNode` setting selectedNodeId;
-	// auto-root does not, so the helper has to.
-	await page.locator('[data-agent-node-id]').first().dispatchEvent('click');
+	// auto-root does not, so the helper has to. Filter to durable nodes
+	// only — pending ghost-children render as `[data-agent-node-id]` too.
+	await page
+		.locator('.agent-node:not(.pending)[data-agent-node-id]')
+		.first()
+		.dispatchEvent('click');
 }
 
 /** Send a prompt via the floating popover anchored to the selected node. */
@@ -51,10 +55,19 @@ export async function sendPrompt(page: Page, prompt: string) {
 	await popover.getByRole('button', { name: /^Send$/ }).click();
 }
 
-/** Resolve when the canvas shows at least `n` nodes. */
+/**
+ * Resolve when the canvas shows at least `n` durable nodes.
+ *
+ * Durable means "produced by a successful run and persisted server-side"
+ * — the post-merge ghost-child UX renders pending placeholders the
+ * instant a prompt fires, so a naive `.agent-node` count crosses the
+ * threshold before the run actually completes. Tests need to wait for
+ * the *real* node to land before clicking it; pending nodes can't be
+ * prompted, dragged into a merge, or have their output inspected.
+ */
 export async function expectNodeCount(page: Page, n: number, timeoutMs = 15_000) {
 	await expect
-		.poll(() => page.locator('.agent-node').count(), { timeout: timeoutMs })
+		.poll(() => page.locator('.agent-node:not(.pending)').count(), { timeout: timeoutMs })
 		.toBeGreaterThanOrEqual(n);
 }
 
@@ -66,18 +79,30 @@ export async function clickTab(
 	await page.getByRole('tab', { name: new RegExp(`^${name}`) }).click();
 }
 
-/** Programmatically click an SVG node (avoids the popover overlay). */
+/**
+ * Programmatically click an SVG node (avoids the popover overlay).
+ *
+ * Targets durable nodes only — pending ghost-children share the
+ * `data-agent-node-id` selector but can't be prompted or merged, so
+ * tests addressing nodes by index almost always mean the durable
+ * graph order. Use `selectPendingNode` if you specifically want a
+ * pending placeholder.
+ */
 export async function selectNode(page: Page, index: number) {
-	await page.locator('[data-agent-node-id]').nth(index).dispatchEvent('click');
+	await page
+		.locator('.agent-node:not(.pending)[data-agent-node-id]')
+		.nth(index)
+		.dispatchEvent('click');
 }
 
 /**
  * Drag-to-merge the SVG node at `sourceIndex` onto the one at `targetIndex`.
  * Uses the real mouse pipeline so the canvas's pointer-capture / pointermove /
- * pointerup wiring runs exactly as it does in production.
+ * pointerup wiring runs exactly as it does in production. Indices address
+ * durable nodes only — pending placeholders never participate in merges.
  */
 export async function dragMerge(page: Page, sourceIndex: number, targetIndex: number) {
-	const nodes = page.locator('[data-agent-node-id]');
+	const nodes = page.locator('.agent-node:not(.pending)[data-agent-node-id]');
 	const source = await nodes.nth(sourceIndex).boundingBox();
 	const target = await nodes.nth(targetIndex).boundingBox();
 	if (!source || !target) {
