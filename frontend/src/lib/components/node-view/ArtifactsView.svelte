@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { GraphStore } from '$lib/agent-graph/state.svelte';
-	import type { Artifact, Node } from '$lib/orchestrator/contracts';
+	import type { Artifact, ContextSnapshot, Node } from '$lib/orchestrator/contracts';
 
 	interface Props {
 		store: GraphStore;
@@ -17,6 +17,23 @@
 	const artifacts = $derived<readonly Artifact[]>(
 		store.artifactsByNodeId.get(node.id) ?? []
 	);
+	// Pull the context snapshot too so we can list the files the agent
+	// actually wrote/read at this node — those live on the snapshot
+	// (`touched_files`, `read_files`), not on Artifact records. With
+	// this section, the Artifacts tab covers the full data export
+	// surface: reports + transcripts (durable artifacts) AND the raw
+	// files the agent touched.
+	const contextSnapshot = $derived<ContextSnapshot | null>(
+		store.contextSnapshotsById.get(node.context_snapshot_id) ?? null
+	);
+	const touchedFiles = $derived<readonly string[]>(
+		(contextSnapshot?.touched_files ?? []).map((ref) => ref.path).filter(Boolean)
+	);
+	const readOnlyFiles = $derived<readonly string[]>(
+		(contextSnapshot?.read_files ?? [])
+			.map((ref) => ref.path)
+			.filter((path) => path && !touchedFiles.includes(path))
+	);
 
 	$effect(() => {
 		const target = node.id;
@@ -31,6 +48,14 @@
 			.finally(() => {
 				loading = false;
 			});
+	});
+
+	$effect(() => {
+		const id = node.context_snapshot_id;
+		if (store.contextSnapshotsById.has(id)) return;
+		void store.fetchContextSnapshot(id).catch(() => {
+			// Silent — surfaced via store.lastError elsewhere.
+		});
 	});
 
 	function isInlineable(artifact: Artifact): boolean {
@@ -89,6 +114,69 @@
 </script>
 
 <section class="artifacts">
+	<div class="bundle">
+		<a
+			class="bundle-link"
+			href={store.nodeArchiveUrl(node.id)}
+			download
+			rel="noopener"
+			target="_blank"
+		>
+			Download node tarball
+		</a>
+		<span class="dim small">All files at this node's snapshot, packaged as `git archive`.</span>
+	</div>
+
+	{#if touchedFiles.length > 0 || readOnlyFiles.length > 0}
+		<section class="files">
+			{#if touchedFiles.length > 0}
+				<p class="section-label">Files written at this node</p>
+				<ul class="list">
+					{#each touchedFiles as path (path)}
+						<li class="row file-row">
+							<div class="head">
+								<span class="kind">file</span>
+								<p class="path mono">{path}</p>
+							</div>
+							<div class="actions">
+								<a
+									class="link"
+									href={store.nodeFileContentUrl(node.id, path)}
+									download={path.split('/').pop()}
+									rel="noopener"
+									target="_blank">Download</a
+								>
+							</div>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+			{#if readOnlyFiles.length > 0}
+				<p class="section-label muted">Files read but not modified</p>
+				<ul class="list">
+					{#each readOnlyFiles as path (path)}
+						<li class="row file-row">
+							<div class="head">
+								<span class="kind dim">read</span>
+								<p class="path mono">{path}</p>
+							</div>
+							<div class="actions">
+								<a
+									class="link"
+									href={store.nodeFileContentUrl(node.id, path)}
+									download={path.split('/').pop()}
+									rel="noopener"
+									target="_blank">Download</a
+								>
+							</div>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</section>
+	{/if}
+
+	<p class="section-label">Reports &amp; transcripts</p>
 	{#if loading && artifacts.length === 0}
 		<p class="muted small">Loading artifacts…</p>
 	{:else if error}
@@ -213,6 +301,45 @@
 	}
 	.dim {
 		color: var(--color-text-muted);
+	}
+	.section-label {
+		font-size: 0.62rem;
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
+		color: var(--color-text-muted);
+		margin: 0;
+	}
+	.files {
+		display: grid;
+		gap: 0.4rem;
+	}
+	.bundle {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 0.55rem;
+		padding: 0.5rem 0.6rem;
+		border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
+		border-radius: 0.7rem;
+		background: rgb(12 13 10 / 0.55);
+	}
+	.bundle-link {
+		display: inline-block;
+		padding: 0.35rem 0.7rem;
+		border-radius: 999px;
+		border: 1px solid color-mix(in srgb, var(--color-primary) 38%, var(--color-border));
+		background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+		color: var(--color-primary);
+		font-size: 0.66rem;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		text-decoration: none;
+	}
+	.bundle-link:hover {
+		border-color: color-mix(in srgb, var(--color-primary) 62%, var(--color-border));
+	}
+	.file-row .head {
+		gap: 0.4rem;
 	}
 	.muted {
 		color: var(--color-text-muted);

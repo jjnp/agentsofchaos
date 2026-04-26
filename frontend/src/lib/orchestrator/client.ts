@@ -176,6 +176,11 @@ export class OrchestratorClient {
 		return this.#url(`/projects/${projectId}/nodes/${nodeId}/files/${segments}/content`);
 	}
 
+	/** URL for downloading a tar of the entire tree at this node's snapshot. */
+	nodeArchiveUrl(projectId: ProjectId, nodeId: NodeId): string {
+		return this.#url(`/projects/${projectId}/nodes/${nodeId}/archive`);
+	}
+
 	async promptNode(projectId: ProjectId, nodeId: NodeId, prompt: string): Promise<Run> {
 		return this.#post(
 			`/projects/${projectId}/nodes/${nodeId}/runs/prompt`,

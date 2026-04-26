@@ -239,6 +239,24 @@ class OrchestratorService:
             path=path,
         )
 
+    async def archive_node(
+        self, *, project_id: UUID, node_id: UUID
+    ) -> tuple[bytes, str]:
+        """Return a tar of the full tree at this node's commit, plus
+        the short commit SHA so the route can compose a sensible
+        download filename.
+        """
+        node = await self._queries.get_node(project_id=project_id, node_id=node_id)
+        snapshot = await self._queries.get_code_snapshot(
+            project_id=project_id, snapshot_id=node.code_snapshot_id
+        )
+        project = await self._queries.get_project(project_id)
+        archive = self._git_service.archive_at(
+            Path(project.root_path),
+            commit_sha=snapshot.commit_sha,
+        )
+        return archive, snapshot.commit_sha
+
     async def get_node_context_diff(
         self, *, project_id: UUID, node_id: UUID
     ) -> ContextDiff:

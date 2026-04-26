@@ -284,6 +284,35 @@ class GitService:
             )
         return tuple(stages)
 
+    def archive_at(
+        self,
+        repository_root: Path,
+        *,
+        commit_sha: str,
+    ) -> bytes:
+        """Return a tar of the entire tree at the given commit.
+
+        Wraps `git archive --format=tar <sha>`. The whole archive
+        comes back as bytes — fine for snapshot-sized payloads
+        (typical project trees are kilobytes to a few megabytes), and
+        keeps the streaming layer in the route trivial. If projects
+        ever grow large enough that this matters, swap for a
+        Popen-based stream.
+        """
+        self._ensure_commit_sha(commit_sha)
+        completed = subprocess.run(
+            ["git", "archive", "--format=tar", commit_sha],
+            cwd=repository_root,
+            capture_output=True,
+            check=False,
+        )
+        if completed.returncode != 0:
+            stderr = completed.stderr.decode("utf-8", errors="replace").strip()
+            raise InvalidRepositoryError(
+                f"git archive failed for {commit_sha}: {stderr}"
+            )
+        return completed.stdout
+
     def read_file_at(
         self,
         repository_root: Path,

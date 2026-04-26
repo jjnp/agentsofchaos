@@ -108,6 +108,33 @@ async def get_node(
     return NodeResponse.from_domain(node)
 
 
+@router.get("/{project_id}/nodes/{node_id}/archive")
+async def get_node_archive(
+    project_id: UUID,
+    node_id: UUID,
+    service: ServiceDependency,
+) -> Response:
+    """Stream a tar of the full tree at this node's code snapshot.
+
+    Wraps `git archive --format=tar <sha>`. The whole tree comes back
+    as one downloadable artifact — useful for "give me the entire
+    state at this node" without cloning the project repo. Filename is
+    `node-<short_sha>.tar`.
+    """
+    archive, commit_sha = await service.archive_node(
+        project_id=project_id, node_id=node_id
+    )
+    filename = f"node-{commit_sha[:12]}.tar"
+    return Response(
+        content=archive,
+        media_type="application/x-tar",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-cache",
+        },
+    )
+
+
 @router.get("/{project_id}/nodes/{node_id}/files/{path:path}/content")
 async def get_node_file_content(
     project_id: UUID,
