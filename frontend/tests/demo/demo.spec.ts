@@ -15,9 +15,12 @@
  *      HEAD as part of `POST /projects/open`, so the spec just waits
  *      for the root to render and clicks it to open the prompt popover
  *   2. Prompt the root → "tic tac toe in JS for the CLI" (creates seed)
- *   3. From seed, prompt: "add a 3-player mode" (branchA)
- *   4. From seed, prompt: "add a random move AI opponent" (branchB)
- *   5. Drag-merge branchA onto branchB
+ *   3. From seed, fork branchA: "add a 3-player mode" — DO NOT wait
+ *   4. From seed, fork branchB: "add a random move AI opponent" — both
+ *      runs now executing concurrently. This is the graph-native move
+ *      the demo is here to show: two pending placeholders side-by-side
+ *      with spinners, two pi processes working in parallel
+ *   5. Wait for both durables to land, then drag-merge them
  *   6. Tour every tab on the merge node
  *   7. Zoom out to show the whole graph
  *
@@ -118,12 +121,24 @@ test('graph-native demo: tic tac toe → 3-player → AI opponent → merge', as
 	const seedNode = page
 		.locator('.agent-node:not(.pending)[data-agent-node-id][aria-label*="Tic tac toe"]')
 		.first();
-	await tourTabsOn(page, seedNode, ['Output', 'Changes', 'Context', 'Events']);
+	// Tab order: end on Changes (the diff) — that's the most concrete
+	// "what did the agent actually do" view, and it's where the gif
+	// should rest. Events is informational and would land the viewer
+	// on a wall of timestamps.
+	await tourTabsOn(page, seedNode, ['Output', 'Context', 'Events', 'Changes']);
 
-	// 4) Branch A — re-anchor to the seed and prompt for 3-player mode.
-	//    Branches are children of the seed (which already has
-	//    tictactoe.js) so the merge has a real common ancestor with the
-	//    file in it.
+	// 4–5) Fork two branches off the seed *concurrently*. The orchestrator's
+	//      run supervisor accepts a new prompt the moment the API call
+	//      returns — the previous run keeps executing in its own task in
+	//      the background. Firing branchB before branchA finishes is the
+	//      headline graph-native move: two pending placeholders pop in
+	//      side-by-side with spinners, both pi processes work in parallel,
+	//      and durables land independently. A linear "wait for A, then
+	//      send B" demo would hide the entire point.
+	//
+	// Step 4: re-anchor to the seed and send branchA's prompt. Don't wait
+	// for the run to complete — Send returns once the daemon has registered
+	// the run and rendered the pending placeholder.
 	await seedNode.dispatchEvent('click');
 	await expect(popover).toBeVisible();
 	await beat(400);
@@ -134,18 +149,13 @@ test('graph-native demo: tic tac toe → 3-player → AI opponent → merge', as
 		});
 	await beat(400);
 	await popover.getByRole('button', { name: /^Send$/ }).click();
-	await waitForNodeCount(page, 3, RUN_TIMEOUT_MS);
-	// Give the daemon a moment to flush the run's final artifacts and
-	// the node's `ready` status. The node materialises the moment the
-	// run commits, but downstream consumers (merge classifier) want
-	// the run-state transition to settle.
-	await beat(1500);
-	const branchA = page
-		.locator('.agent-node:not(.pending)[data-agent-node-id][aria-label*="3-player mode"]')
-		.first();
-	await tourTabsOn(page, branchA, ['Output', 'Changes', 'Context']);
+	// Brief pause so the gif viewer registers branchA's pending
+	// placeholder rendering (spinner kicks in) before we re-anchor.
+	await beat(1200);
 
-	// 5) Branch B — re-anchor to the seed, ask for a random AI opponent
+	// Step 5: re-click the seed to move the popover anchor back from
+	// branchA-pending (which was auto-selected on Send) to the seed.
+	// Then send branchB's prompt. Now BOTH runs are in flight.
 	await seedNode.dispatchEvent('click');
 	await expect(popover).toBeVisible();
 	await beat(400);
@@ -157,12 +167,29 @@ test('graph-native demo: tic tac toe → 3-player → AI opponent → merge', as
 		);
 	await beat(400);
 	await popover.getByRole('button', { name: /^Send$/ }).click();
+	// Hold so the gif viewer sees both pending placeholders side-by-side
+	// with their spinners — the parallelism is the visual hook.
+	await beat(2000);
+
+	// Wait for BOTH durables to land. expectNodeCount filters out
+	// pending placeholders so this is a strict "both real children
+	// committed" condition. Then settle so the run-state transitions
+	// have propagated downstream (merge classifier reads node.status).
 	await waitForNodeCount(page, 4, RUN_TIMEOUT_MS);
 	await beat(1500);
+
+	const branchA = page
+		.locator('.agent-node:not(.pending)[data-agent-node-id][aria-label*="3-player mode"]')
+		.first();
 	const branchB = page
 		.locator('.agent-node:not(.pending)[data-agent-node-id][aria-label*="Random AI"]')
 		.first();
-	await tourTabsOn(page, branchB, ['Output', 'Changes', 'Context']);
+
+	// Tour both completed branches. Tabs are picked to highlight what
+	// the parallel runs actually produced — Output (their event
+	// streams), Changes (their independent edits to tictactoe.js).
+	await tourTabsOn(page, branchA, ['Output', 'Changes']);
+	await tourTabsOn(page, branchB, ['Output', 'Changes']);
 
 	// 6) Recenter, then anchor the popover at root so it sits at the
 	//    top of the canvas — clear of the drag targets at the bottom.
@@ -195,18 +222,20 @@ test('graph-native demo: tic tac toe → 3-player → AI opponent → merge', as
 	await waitForNodeCount(page, 5, 60_000);
 	await beat(1500);
 
-	// 8) Walk through every tab on the merge node — Merge tab is the
-	//    headline; Changes shows the integrated diff; Artifacts surfaces
-	//    the merge report.
+	// 8) Walk through every tab on the merge node, ending on Changes
+	//    (the integrated diff). Order: Output → Context → Events →
+	//    Artifacts → Merge → Changes. Merge surfaces the conflict
+	//    report; Changes is the unified picture and the natural
+	//    resting place for a viewer scrubbing the gif.
 	const mergeNode = page.locator('.agent-node.kind-merge').first();
 	await expect(mergeNode).toBeVisible({ timeout: 15_000 });
 	await mergeNode.dispatchEvent('click');
 	await beat(700);
-	for (const tab of ['Output', 'Changes', 'Context', 'Merge', 'Artifacts', 'Events'] as const) {
+	for (const tab of ['Output', 'Context', 'Events', 'Artifacts', 'Merge', 'Changes'] as const) {
 		const button = page.getByRole('tab', { name: new RegExp(`^${tab}`) });
 		if (await button.count()) {
 			await button.first().click();
-			await beat(1300);
+			await beat(1800);
 		}
 	}
 
@@ -265,6 +294,11 @@ async function waitForNodeCount(
  * Click each tab on the inspector for the given node locator, with a
  * beat between clicks so the gif viewer can register each one. Skips
  * tabs that don't exist (e.g. Merge on a non-merge node).
+ *
+ * Per-tab dwell is generous (1.8s) so a viewer scrubbing the gif has
+ * time to actually read each tab — Output's last few lines, the
+ * Changes diff hunks, the Context summary. The previous 1.1s blew
+ * past the meaningful content.
  */
 async function tourTabsOn(
 	page: import('@playwright/test').Page,
@@ -277,7 +311,7 @@ async function tourTabsOn(
 		const button = page.getByRole('tab', { name: new RegExp(`^${tab}`) });
 		if (await button.count()) {
 			await button.first().click();
-			await beat(1100);
+			await beat(1800);
 		}
 	}
 }
