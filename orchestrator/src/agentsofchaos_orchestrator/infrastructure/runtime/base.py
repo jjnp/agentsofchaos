@@ -108,6 +108,19 @@ class RuntimeAdapter(Protocol):
     def capabilities(self) -> frozenset[RuntimeCapability]:
         ...
 
+    async def probe(self) -> None:
+        """Verify the adapter can run on this host.
+
+        Implementations check that any host-side prerequisites are
+        satisfied (binary on PATH, credentials present, runtime daemon
+        reachable, etc.) and raise `RuntimeExecutionError` with a
+        human-readable message when they aren't. Distinct from
+        `SandboxBackend.probe` which gates the spawn boundary; this
+        gates the runtime itself. Cheap operation — called from the
+        `/health/runtime` route on every request, not just startup.
+        """
+        ...
+
     async def execute(
         self,
         *,

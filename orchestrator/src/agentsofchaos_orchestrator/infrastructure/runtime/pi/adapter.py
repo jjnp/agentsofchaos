@@ -99,6 +99,41 @@ class PiRuntimeAdapter:
             }
         )
 
+    async def probe(self) -> None:
+        """Verify pi can run on this host.
+
+        Three checks, in order — first failure raises. Diagnostic
+        messages are intentionally specific so an operator hitting
+        `/health/runtime` can tell what's wrong without grepping logs.
+        """
+        import shutil
+
+        # 1. Binary on PATH (or absolute path that exists).
+        if Path(self.pi_binary).is_absolute():
+            if not Path(self.pi_binary).is_file():
+                raise RuntimeExecutionError(
+                    f"pi binary not found at configured path: {self.pi_binary}"
+                )
+        else:
+            if shutil.which(self.pi_binary) is None:
+                raise RuntimeExecutionError(
+                    f"pi binary {self.pi_binary!r} is not on PATH; install pi-mono "
+                    "or set AOC_PI_BINARY to the correct path"
+                )
+        # 2. Config dir present (auth.json + settings.json) — without
+        # these pi can't authenticate to its provider.
+        config_dir = Path.home() / ".pi" / "agent"
+        missing: list[str] = []
+        if not (config_dir / "auth.json").is_file():
+            missing.append("auth.json")
+        if not (config_dir / "settings.json").is_file():
+            missing.append("settings.json")
+        if missing:
+            raise RuntimeExecutionError(
+                f"pi config missing in {config_dir}: {', '.join(missing)}. "
+                "Run `pi auth login` and configure a default model first."
+            )
+
     async def execute(
         self,
         *,

@@ -257,6 +257,57 @@ def test_health_endpoint(client: TestClient) -> None:
     assert "Orchestrator" in body["app_name"]
 
 
+def test_health_sandbox_reports_ok_for_default_none_backend(
+    client: TestClient,
+) -> None:
+    """The default sandbox backend (`none`) is always usable — it just
+    spawns processes directly. `/health/sandbox` must say so."""
+    r = client.get("/health/sandbox")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["name"] == "none"
+    assert body["status"] == "ok"
+    assert body["detail"] is None
+
+
+def test_health_runtime_reports_ok_for_noop_backend(client: TestClient) -> None:
+    """The noop runtime has no host dependencies — `/health/runtime`
+    must report ok in the default fixture."""
+    r = client.get("/health/runtime")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["name"] == "noop"
+    assert body["status"] == "ok"
+    assert body["detail"] is None
+
+
+def test_health_runtime_reports_unavailable_when_pi_binary_missing(
+    tmp_path: Path,
+) -> None:
+    """When the configured runtime can't run on this host the endpoint
+    surfaces a specific, operator-actionable error in the `detail`
+    field — a 200 body with `status=unavailable`, not a 5xx, so
+    monitoring can poll it without confusing transport errors with
+    diagnostic state.
+    """
+    db_path = tmp_path / "api-int.sqlite3"
+    settings = Settings(
+        database_url=f"sqlite+aiosqlite:///{db_path}",
+        runtime_backend=RuntimeKind.PI,
+        # An absolute path that doesn't exist — pi probe will fail
+        # cleanly with the configured-path message.
+        pi_binary=str(tmp_path / "no-such-pi-binary"),
+    )
+    app = create_app(settings)
+    with TestClient(app) as test_client:
+        r = test_client.get("/health/runtime")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["name"] == "pi"
+    assert body["status"] == "unavailable"
+    assert "no-such-pi-binary" in body["detail"]
+
+
 def test_open_project_is_idempotent(client: TestClient, repo: Path) -> None:
     first = client.post("/projects/open", json={"path": str(repo)})
     assert first.status_code == 201, first.text

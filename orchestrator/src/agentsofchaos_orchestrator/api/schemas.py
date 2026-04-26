@@ -141,6 +141,21 @@ class HealthResponse(ApiModel):
     app_name: str
 
 
+class HealthDiagnosticResponse(ApiModel):
+    """Operator-facing health check for a single subsystem.
+
+    `name` is the configured backend kind (e.g. `bubblewrap`, `pi`).
+    `status` is `ok` when probe succeeded, `unavailable` otherwise.
+    `detail` carries the human-readable error message on failure
+    (binary missing, daemon unreachable, credentials missing, …) and
+    is null on success.
+    """
+
+    name: str
+    status: str
+    detail: str | None = None
+
+
 class CodeSnapshotResponse(ApiModel):
     id: UUID
     project_id: UUID

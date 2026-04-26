@@ -69,6 +69,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.event_bus = event_bus
         app.state.git_service = git_service
         app.state.orchestrator_service = orchestrator_service
+        app.state.sandbox_backend = sandbox
+        app.state.runtime_adapter = runtime_adapter
 
         try:
             yield

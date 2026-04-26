@@ -39,6 +39,10 @@ class NoOpRuntimeAdapter:
     def capabilities(self) -> frozenset[RuntimeCapability]:
         return frozenset({RuntimeCapability.CANCELLATION})
 
+    async def probe(self) -> None:
+        # No external dependencies — the no-op runtime always works.
+        return None
+
     async def execute(
         self,
         *,
