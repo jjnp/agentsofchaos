@@ -85,6 +85,15 @@ test('graph-native demo: tic tac toe → 3-player → AI opponent → merge', as
 	await expect(page.locator('.agent-canvas')).toBeVisible({ timeout: 15_000 });
 	await beat(800);
 
+	// Hide the side controls panel so the canvas has the whole frame
+	// to itself. Layout-mode toggle and Recenter live there but the
+	// demo only fires Recenter once via dispatchEvent (works whether
+	// the panel is on-screen or transformed off), and waitForNodeCount
+	// clicks Refresh the same way. Net effect: more breathing room
+	// for the graph in the gif.
+	await page.getByRole('button', { name: /^Hide$/ }).dispatchEvent('click');
+	await beat(600);
+
 	// 2) The root is now auto-created on `POST /projects/open`, so we
 	//    just wait for it to render and click it to open the prompt
 	//    popover. The "New root" button only appears in the (now rare)
@@ -235,7 +244,7 @@ test('graph-native demo: tic tac toe → 3-player → AI opponent → merge', as
 		const button = page.getByRole('tab', { name: new RegExp(`^${tab}`) });
 		if (await button.count()) {
 			await button.first().click();
-			await beat(1800);
+			await beat(2600);
 		}
 	}
 
@@ -295,10 +304,11 @@ async function waitForNodeCount(
  * beat between clicks so the gif viewer can register each one. Skips
  * tabs that don't exist (e.g. Merge on a non-merge node).
  *
- * Per-tab dwell is generous (1.8s) so a viewer scrubbing the gif has
- * time to actually read each tab — Output's last few lines, the
- * Changes diff hunks, the Context summary. The previous 1.1s blew
- * past the meaningful content.
+ * Per-tab dwell is generous (2.6s) so a viewer can actually read each
+ * tab — Output's last few lines, the Changes diff hunks, the Context
+ * summary. Earlier passes at 1.1s and 1.8s blew past the meaningful
+ * content; 2.6s feels right for someone watching the gif at 3x
+ * playback speed (PTS/3 in the build script).
  */
 async function tourTabsOn(
 	page: import('@playwright/test').Page,
@@ -311,7 +321,7 @@ async function tourTabsOn(
 		const button = page.getByRole('tab', { name: new RegExp(`^${tab}`) });
 		if (await button.count()) {
 			await button.first().click();
-			await beat(1800);
+			await beat(2600);
 		}
 	}
 }
