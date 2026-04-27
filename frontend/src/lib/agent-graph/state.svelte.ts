@@ -39,6 +39,16 @@ import type {
 
 export type ConnectionStatus = 'idle' | 'connecting' | 'open' | 'error' | 'closed';
 
+// Soft cap on the in-memory event buffer. Sustained pi runs emit
+// many durable runtime events (tool execution start/end pairs,
+// session-state updates, message ends, etc.) — without a ceiling
+// the array grows unbounded across a session and the page slows
+// to a crawl. The Events tab reads `slice(-200)`; TerminalOutput
+// filters by run-id; both stay correct as long as the *tail* is
+// preserved. Older history is still available via Refresh →
+// `GET /events` if anyone actually needs it.
+const MAX_EVENTS_IN_MEMORY = 500;
+
 export class GraphStore {
 	readonly #client: OrchestratorClient;
 
@@ -130,7 +140,15 @@ export class GraphStore {
 		]);
 		this.project = graph.project;
 		this.#mergeAuthoritativeNodes([...graph.nodes]);
-		this.events = [...events];
+		// Apply the same in-memory cap as `#handleEvent` does on the
+		// SSE path. The `/events` endpoint returns the full project
+		// history, which on a long-running session can be thousands
+		// of records — pulling them all into reactive state on every
+		// Refresh is what the cap is here to prevent.
+		this.events =
+			events.length > MAX_EVENTS_IN_MEMORY
+				? events.slice(-MAX_EVENTS_IN_MEMORY)
+				: [...events];
 		this.#bumpRecenterIfDepthAdvanced();
 	}
 
@@ -336,6 +354,24 @@ export class GraphStore {
 	}
 
 	#handleEvent(event: EventRecord): void {
+		// Drop non-durable runtime events (per-token text/thinking/
+		// toolcall deltas + partial tool results). Those fire many
+		// times per second on a live pi run and were causing the page
+		// to grind under their volume — `O(N)` dedup `some()` × push
+		// rate × derived re-runs across every consumer. The UI
+		// already filters them at render time (TerminalOutput skips
+		// `runtime.message_delta` / `runtime.tool_execution_update`),
+		// and the full content lands in the matching `_end` event a
+		// few hundred ms later, so storing them in the array adds
+		// load with zero render-side benefit.
+		const runtimeEventPayload = event.payload['runtime_event'];
+		if (
+			runtimeEventPayload &&
+			typeof runtimeEventPayload === 'object' &&
+			(runtimeEventPayload as { durable?: boolean }).durable === false
+		) {
+			return;
+		}
 		// Dedupe by id. Live SSE delivery and the Refresh-poll's
 		// `listEvents` round-trip can both deliver the same event:
 		// Refresh resets `this.events` to the full API list, and
@@ -344,8 +380,18 @@ export class GraphStore {
 		// keyed `{#each events as event (event.id)}` blocks (notably
 		// `TerminalOutput`) hit `each_key_duplicate` and Svelte 5
 		// throws mid-render, breaking downstream reactivity.
-		if (this.events.some((existing) => existing.id === event.id)) return;
-		this.events = [...this.events, event];
+		// Bound the search to a recent window so dedup stays cheap
+		// even as the array grows toward the cap.
+		const dedupeWindow = this.events.slice(-200);
+		if (dedupeWindow.some((existing) => existing.id === event.id)) return;
+		// Cap the in-memory array. The Events tab and TerminalOutput
+		// both read from the tail; older durable entries can be
+		// re-fetched via Refresh (which calls `listEvents`) if the
+		// operator actually wants the full history. Keeping memory
+		// flat here was the hot fix for the page nearly crashing
+		// under sustained agent runs.
+		const next = [...this.events, event];
+		this.events = next.length > MAX_EVENTS_IN_MEMORY ? next.slice(-MAX_EVENTS_IN_MEMORY) : next;
 		switch (event.topic) {
 			case 'root_node_created':
 			case 'prompt_node_created':
