@@ -148,5 +148,10 @@ async function dragMergeBetween(
 
 /** Click a side-controls layout-mode button by its visible label. */
 export async function selectLayoutMode(page: Page, mode: 'Rings' | 'Tree' | 'Force') {
-	await page.getByRole('button', { name: new RegExp(`^${mode}$`) }).click();
+	// dispatchEvent bypasses the pointer-events hit test — the
+	// popover on the selected node can land over the side controls
+	// panel where the layout buttons live, blocking a real click.
+	await page
+		.getByRole('button', { name: new RegExp(`^${mode}$`) })
+		.dispatchEvent('click');
 }

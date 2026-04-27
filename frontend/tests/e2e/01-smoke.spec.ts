@@ -21,6 +21,10 @@ test('full demo path: open → root → prompt → child → tabs', async ({ pag
 	await test.step('events tab carries the topic feed', async () => {
 		await page.locator('.agent-node').first().click();
 		await clickTab(page, 'Events');
+		// Feed is opt-in — rendering 200 keyed list items on every push
+		// was the perf hot spot under sustained agent runs. Enable it
+		// explicitly, then the topic list should populate.
+		await page.getByRole('button', { name: /^Enable event feed$/ }).click();
 		await expect(page.getByText('project_opened')).toBeVisible({ timeout: 10_000 });
 		await expect(page.getByText('root_node_created')).toBeVisible();
 	});

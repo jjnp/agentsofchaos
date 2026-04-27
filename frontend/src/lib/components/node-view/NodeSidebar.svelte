@@ -232,20 +232,47 @@
 
 		<div class="detail-body" role="tabpanel">
 			{#if activeTab === 'events'}
-				<div bind:this={eventViewport} class="terminal-viewport">
-					{#if recentEvents.length === 0}
-						<p class="terminal-empty">&gt; waiting for orchestrator events…</p>
-					{:else}
-						<ul class="terminal">
-							{#each recentEvents as event (event.id)}
-								<li>
-									<time datetime={event.created_at}>{formatTime(event.created_at)}</time>
-									<span class="topic" data-topic={event.topic}>{event.topic}</span>
-								</li>
-							{/each}
-						</ul>
-					{/if}
-				</div>
+				{#if !store.eventFeedEnabled}
+					<div class="event-feed-gate">
+						<p class="muted small">
+							Event feed is off by default — the rolling list of orchestrator
+							events under sustained agent runs was a measurable load on the
+							page. Turn it on if you actually need to watch the topics fly by.
+						</p>
+						<button
+							type="button"
+							class="enable"
+							onclick={() => (store.eventFeedEnabled = true)}
+						>
+							Enable event feed
+						</button>
+					</div>
+				{:else}
+					<div class="event-feed-toggle-row">
+						<span class="muted small">{store.events.length} events buffered</span>
+						<button
+							type="button"
+							class="enable enable--off"
+							onclick={() => (store.eventFeedEnabled = false)}
+						>
+							Disable
+						</button>
+					</div>
+					<div bind:this={eventViewport} class="terminal-viewport">
+						{#if recentEvents.length === 0}
+							<p class="terminal-empty">&gt; waiting for orchestrator events…</p>
+						{:else}
+							<ul class="terminal">
+								{#each recentEvents as event (event.id)}
+									<li>
+										<time datetime={event.created_at}>{formatTime(event.created_at)}</time>
+										<span class="topic" data-topic={event.topic}>{event.topic}</span>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					</div>
+				{/if}
 			{:else if activeTab === 'output' && node}
 				<TerminalOutput {store} {node} variant="full" />
 			{:else if activeTab === 'changes' && durableNode}
@@ -516,6 +543,41 @@
 	.terminal-empty {
 		font-family: var(--font-mono);
 		font-size: 0.74rem;
+		color: var(--color-text-muted);
+	}
+	.event-feed-gate {
+		display: grid;
+		gap: 0.6rem;
+		padding: 0.85rem;
+		border: 1px dashed color-mix(in srgb, var(--color-border) 80%, transparent);
+		border-radius: 0.85rem;
+		background: rgb(12 13 10 / 0.5);
+	}
+	.event-feed-toggle-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.6rem;
+		padding: 0.35rem 0.5rem 0.45rem;
+	}
+	.enable {
+		justify-self: start;
+		border: 1px solid color-mix(in srgb, var(--color-primary) 38%, var(--color-border));
+		background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+		color: var(--color-primary);
+		border-radius: 999px;
+		padding: 0.32rem 0.7rem;
+		font-size: 0.66rem;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		cursor: pointer;
+	}
+	.enable:hover {
+		border-color: color-mix(in srgb, var(--color-primary) 62%, var(--color-border));
+	}
+	.enable--off {
+		border-color: color-mix(in srgb, var(--color-border) 80%, transparent);
+		background: color-mix(in srgb, var(--color-surface-elevated) 80%, black);
 		color: var(--color-text-muted);
 	}
 

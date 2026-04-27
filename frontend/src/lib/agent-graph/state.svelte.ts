@@ -68,6 +68,12 @@ export class GraphStore {
 	connectionStatus = $state<ConnectionStatus>('idle');
 	lastError = $state<string | null>(null);
 	activeLayoutMode = $state<LayoutMode>('rings');
+	// The Events tab feed is opt-in. Rendering 200 reactive list
+	// items keyed by id was the hot consumer of `store.events` on
+	// long sessions — every push re-derived `recentEvents`, every
+	// `{#each}` ran. The feed is mostly diagnostic; operators can
+	// flip it on when they actually need it.
+	eventFeedEnabled = $state(false);
 	// Bumping `recenterKey` signals the canvas to refit instantly — the
 	// path the user takes when they click the Recenter button or change
 	// layout mode. `smoothRecenterKey` signals an animated tween, used
