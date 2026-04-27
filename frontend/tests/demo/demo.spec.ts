@@ -335,6 +335,16 @@ async function tourTabsOn(
 					await beat(2600);
 				}
 			}
+			// Events tab is opt-in (rendering the rolling feed was the
+			// hot perf path). Click Enable so the gif viewer sees the
+			// actual topic timeline instead of the placeholder copy.
+			if (tab === 'Events') {
+				const enable = page.getByRole('button', { name: /^Enable event feed$/ });
+				if (await enable.count()) {
+					await enable.first().click().catch(() => {});
+					await beat(2600);
+				}
+			}
 		}
 	}
 }
